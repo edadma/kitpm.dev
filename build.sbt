@@ -48,8 +48,10 @@ val commonSettings = Seq(
       "-language:existentials",
       "-language:dynamics",
     ),
-//  libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % "test",
+  libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % "test",
   libraryDependencies ++= Seq(
+    "io.github.edadma" %%% "toml"           % "0.1.0",
+    "io.github.edadma" %%% "petradb-engine" % "1.5.2",
   ),
   publishMavenStyle      := true,
   Test / publishArtifact := false,
