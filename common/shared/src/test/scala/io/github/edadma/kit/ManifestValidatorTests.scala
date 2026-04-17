@@ -8,7 +8,7 @@ class ManifestValidatorTests extends AnyFreeSpec with Matchers {
   val platform = "x86_64-linux-gnu"
 
   def pkg(effects: Effects, scope: Scope = Scope.System): Manifest =
-    Manifest("test", "1.0", platform, ContentHash("sha256", "abc"), scope, Nil, Nil, effects)
+    Manifest("test", "1.0", platform, ContentHash("sha256", "abc"), scope, Nil, Nil, effects, Nil)
 
   // --- Valid manifests ---
 

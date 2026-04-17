@@ -10,6 +10,14 @@ case class Manifest(
     requiresFeatures: List[String],
     deps: List[DepRef],
     effects: Effects,
+    tests: List[PackageTest],
+)
+
+/** A declared self-test for the packaged software. */
+case class PackageTest(
+    name: String,
+    binary: String,
+    requiresFeatures: List[String],
 )
 
 /** Content-addressed identity of a package. */

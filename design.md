@@ -230,6 +230,18 @@ restart = "on-failure"
 generator = "bin/nginx-genconfig"
 output = "/etc/nginx/nginx.conf"
 inputs = ["/etc/kit/system.toml#nginx"]
+
+# --- Package tests: self-tests that verify the packaged software works ---
+
+[[tests]]
+name = "nginx-starts"
+binary = "bin/nginx-test-start"
+requires-features = ["service-registration"]
+
+[[tests]]
+name = "nginx-serves"
+binary = "bin/nginx-test-serve"
+requires-features = ["network"]
 ```
 
 Fields:
@@ -241,6 +253,7 @@ Fields:
 - `requires-features` — platform features the package needs. If the host lacks an adapter for a required feature, installation fails with a clear diagnostic. If the feature is optional (the package can function without it, just less securely), the package omits it from this list and gracefully degrades.
 - `deps` — exact pins. Resolution is transitive closure.
 - `effects.*` — declared system integration. The schema is closed; see §7.
+- `tests` — optional self-tests. Each declares a binary and the features it requires. See §22.
 
 Effects paths like `/var/lib/nginx` are relative to the root at application time: on a `--root=/` install the path is literal; on a `--root=/usr/local/kit` install it becomes `/usr/local/kit/var/lib/nginx`. The package doesn't know which; the daemon handles the substitution.
 
@@ -870,6 +883,11 @@ kit adapters list
 kit features
 kit verify
 
+# Package testing
+kit test <name>                   # install into isolated root, run declared tests, tear down
+kit test --all                    # test every package in the repo
+kit test --report                 # show last test results for all packages
+
 # Administration
 kit gc [--dry-run]
 kit pin <content-hash>
@@ -1170,3 +1188,79 @@ Kit is a portable POSIX package manager that:
 Seven invariants carry the weight: immutability, exact pinning, separation of concerns, profile composition, identity-is-content, bounded effects, POSIX portability. Together they make Kit both a real package manager and a teachable one that outlives the course.
 
 A student finishing a Slix-based OS course should be able to point at `<root>/kit/` on any POSIX system and explain how it achieves rollback, multi-version coexistence, multi-user safety, deterministic system integration, platform portability, and clean separation from the build system — by reading files, not by reciting abstractions.
+
+---
+
+## 22. Package Testing
+
+Packages can declare self-tests in their manifest. These verify that the packaged software works correctly after installation — not that Kit installed it correctly (that's Kit's own test suite), but that the software itself starts, serves, computes, or does whatever it's supposed to do.
+
+### 22.1 Test Declaration
+
+```toml
+[[tests]]
+name = "starts-and-listens"
+binary = "bin/nginx-test-start"
+requires-features = ["service-registration", "network"]
+
+[[tests]]
+name = "serves-static"
+binary = "bin/nginx-test-serve"
+requires-features = ["network"]
+
+[[tests]]
+name = "config-reload"
+binary = "bin/nginx-test-reload"
+requires-features = []
+```
+
+Each test declares:
+
+- `name` — human-readable identifier. Must be unique within the manifest.
+- `binary` — path to the test executable, relative to the store entry. Exits 0 on pass, non-zero on fail. Stdout/stderr are captured.
+- `requires-features` — features the test needs. Tests whose features are unavailable are skipped with a clear diagnostic, not failed.
+
+### 22.2 Execution Model
+
+`kit test <name>` performs the following:
+
+1. Resolve the package's full dependency closure.
+2. Create a fresh ephemeral root at `/tmp/kit-test-<uuid>`.
+3. Install the package and its closure into the ephemeral root (store population + generation construction + activation).
+4. For each declared test, in order:
+   a. Check `requires-features` against installed adapters. Skip if unsatisfied.
+   b. Run the test binary in the same sandbox as generators: unprivileged user, confined to the ephemeral root, `ulimit`-enforced resource limits, sandbox adapter strengthening where available.
+   c. Record pass/fail, exit code, stdout, stderr, and wall-clock time.
+5. Tear down the ephemeral root.
+6. Report results.
+
+The ephemeral root is destroyed whether tests pass or fail. `kit test --keep-on-fail` preserves it for debugging.
+
+### 22.3 Batch Testing
+
+`kit test --all` walks every package in the configured repositories (filtered by the current platform's target triple) and runs their tests. This is the release gate: a new Slix release should pass `kit test --all` before shipping.
+
+Results are stored in `<root>/kit/var/state/test-results.db` (PetraDB), keyed by content hash:
+
+```
+content-hash | test-name | passed | exit-code | duration-ms | tested-at
+```
+
+`kit test --report` displays the last results for all packages. `kit test --report <name>` shows results for a specific package.
+
+### 22.4 Test Results and Content Hashes
+
+A test result is stamped with the package's content hash. Since the content hash is the sole identity, a passing result means "this exact package was tested and passed." If the package changes (new version, different effects, any byte difference), the content hash changes and prior results no longer apply.
+
+This means `kit test --all` can skip packages whose content hash already has a passing result in the database. `kit test --all --force` ignores cached results and retests everything.
+
+### 22.5 What Tests Are Not
+
+- **Not build tests.** These test the packaged artifact, not the build process. Build tests are the responsibility of `kit-build` (future).
+- **Not Kit's own tests.** Kit's tier 0–3 tests verify Kit itself. Package tests verify the software Kit installs.
+- **Not interactive.** Test binaries run unattended. No prompts, no user input.
+- **Not unbounded.** Tests run in the same sandbox as generators. A test cannot modify the host, access the network beyond the ephemeral root (unless the sandbox adapter permits it for tests with `network` feature), or run indefinitely.
+
+### 22.6 Why This Matters
+
+When you're building a package ecosystem — whether for Slix or for a personal prefix — the ability to answer "does every package in the repo actually work?" is the difference between a curated distribution and a pile of tarballs. `kit test --all` makes that question answerable, automated, and tied to exact content hashes so the answer doesn't go stale.

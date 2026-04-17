@@ -22,7 +22,8 @@ object ManifestParser:
           features <- optionalStringList(doc, "requires-features")
           deps     <- parseDeps(doc)
           effects  <- parseEffects(doc)
-        yield Manifest(name, version, target, hash, scope, features, deps, effects)
+          tests    <- parseTests(doc)
+        yield Manifest(name, version, target, hash, scope, features, deps, effects, tests)
 
   // --- Top-level field helpers ---
 
@@ -141,6 +142,24 @@ object ManifestParser:
     doc.getString("effects.first-run.binary") match
       case None         => Right(None)
       case Some(binary) => Right(Some(FirstRunEffect(binary)))
+
+  // --- Test parsing ---
+
+  private def parseTests(doc: TomlDocument): Either[String, List[PackageTest]] =
+    doc.getArr("tests") match
+      case None => Right(Nil)
+      case Some(elems) =>
+        val results = elems.zipWithIndex.map { (v, i) =>
+          v match
+            case TomlValue.Obj(fields) =>
+              for
+                name    <- fieldStr(fields, "name", s"tests[$i]")
+                binary  <- fieldStr(fields, "binary", s"tests[$i]")
+                features <- fieldStrListOpt(fields, "requires-features").map(_.getOrElse(Nil))
+              yield PackageTest(name, binary, features)
+            case _ => Left(s"tests[$i]: expected a table")
+        }
+        sequence(results)
 
   // --- Field extraction helpers ---
 

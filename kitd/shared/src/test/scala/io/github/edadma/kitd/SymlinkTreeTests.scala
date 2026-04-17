@@ -10,7 +10,7 @@ class SymlinkTreeTests extends AnyFreeSpec with Matchers {
   val platform = "x86_64-linux-gnu"
 
   def pkg(name: String, hash: String, effects: Effects = Effects.empty, deps: List[DepRef] = Nil): Manifest =
-    Manifest(name, "1.0", platform, ContentHash("sha256", hash), Scope.System, Nil, deps, effects)
+    Manifest(name, "1.0", platform, ContentHash("sha256", hash), Scope.System, Nil, deps, effects, Nil)
 
   "plan symlinks from service effects" in {
     val m = pkg(

@@ -37,6 +37,10 @@ class ManifestSerializerTests extends AnyFreeSpec with Matchers {
       generators = List(GenerateEffect("bin/nginx-genconfig", "/etc/nginx/nginx.conf", List("/etc/kit/system.toml#nginx"))),
       firstRun = Some(FirstRunEffect("bin/nginx-initdb")),
     ),
+    tests = List(
+      PackageTest("nginx-starts", "bin/nginx-test-start", List("service-registration")),
+      PackageTest("nginx-serves", "bin/nginx-test-serve", List("network")),
+    ),
   )
 
   "roundtrip: serialize then parse" in {
@@ -107,6 +111,7 @@ class ManifestSerializerTests extends AnyFreeSpec with Matchers {
       Nil,
       Nil,
       Effects.empty,
+      Nil,
     )
 
     val toml = ManifestSerializer.toToml(minimal)

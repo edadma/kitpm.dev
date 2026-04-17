@@ -79,6 +79,14 @@ object ManifestSerializer:
         sb.append(s"""binary = "${fr.binary}"\n""")
       }
 
+    for t <- m.tests do
+      sb.append("\n[[tests]]\n")
+      sb.append(s"""name = "${t.name}"\n""")
+      sb.append(s"""binary = "${t.binary}"\n""")
+      if t.requiresFeatures.nonEmpty then
+        val feats = t.requiresFeatures.map(f => s""""$f"""").mkString(", ")
+        sb.append(s"requires-features = [$feats]\n")
+
     sb.result()
 
   private def scopeStr(s: Scope): String = s match

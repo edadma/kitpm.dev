@@ -15,7 +15,7 @@ class PlanOrderTests extends AnyFreeSpec with Matchers {
       effects: Effects = Effects.empty,
       deps: List[DepRef] = Nil,
   ): Manifest =
-    Manifest(name, "1.0", platform, ContentHash("sha256", hash), Scope.System, Nil, deps, effects)
+    Manifest(name, "1.0", platform, ContentHash("sha256", hash), Scope.System, Nil, deps, effects, Nil)
 
   "type ordering: groups before users before directories before generators before services" in {
     val m = pkg(

@@ -9,7 +9,7 @@ class ResolutionTests extends AnyFreeSpec with Matchers {
   val features = Set("user-database", "service-registration", "capabilities")
 
   def minimal(name: String, version: String, hash: String, deps: List[DepRef] = Nil): Manifest =
-    Manifest(name, version, platform, ContentHash("sha256", hash), Scope.System, Nil, deps, Effects.empty)
+    Manifest(name, version, platform, ContentHash("sha256", hash), Scope.System, Nil, deps, Effects.empty, Nil)
 
   val libc: Manifest    = minimal("libc", "0.3.1", "libc-hash")
   val openssl: Manifest = minimal("openssl", "3.2.1", "openssl-hash", List(DepRef("libc", "0.3.1", libc.contentHash)))
