@@ -33,11 +33,11 @@ ThisBuild / developers := List(
 )
 
 ThisBuild / homepage := Some(url("https://github.com/edadma/kitpm.dev"))
-ThisBuild / description := "Project description here"
+ThisBuild / description := "Kit — a portable POSIX package manager"
 
 ThisBuild / publishTo := sonatypePublishToBundle.value
 
-val commonSettings = Seq(
+val sharedSettings = Seq(
   scalacOptions ++=
     Seq(
       "-deprecation",
@@ -49,23 +49,19 @@ val commonSettings = Seq(
       "-language:dynamics",
     ),
   libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % "test",
-  libraryDependencies ++= Seq(
-    "io.github.edadma" %%% "toml"           % "0.1.0",
-    "io.github.edadma" %%% "petradb-engine" % "1.5.2",
-  ),
   publishMavenStyle      := true,
   Test / publishArtifact := false,
 )
 
-val commonJvmSettings = Seq(
+val sharedJvmSettings = Seq(
   libraryDependencies += "org.scala-js" %% "scalajs-stubs" % "1.1.0" % "provided",
 )
 
-val commonNativeSettings = Seq(
+val sharedNativeSettings = Seq(
   libraryDependencies += "org.scala-js" %% "scalajs-stubs" % "1.1.0" % "provided",
 )
 
-val commonJsSettings = Seq(
+val sharedJsSettings = Seq(
   jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
   scalaJSLinkerConfig ~= { _.withSourceMap(false) },
@@ -74,25 +70,53 @@ val commonJsSettings = Seq(
   scalaJSUseMainModuleInitializer        := true,
 )
 
+// ── common: shared types, parsing, resolution, effects ──────────────
+
+lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
+  .in(file("common"))
+  .settings(sharedSettings)
+  .settings(
+    name := "kit-common",
+    libraryDependencies ++= Seq(
+      "io.github.edadma" %%% "toml"           % "0.1.0",
+      "io.github.edadma" %%% "petradb-engine" % "1.5.2",
+    ),
+  )
+  .jvmSettings(sharedJvmSettings)
+  .nativeSettings(sharedNativeSettings)
+  .jsSettings(sharedJsSettings)
+
+// ── kit: unprivileged CLI client ────────────────────────────────────
+
 lazy val kit = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .in(file("kit"))
-  .settings(commonSettings)
+  .dependsOn(common)
+  .settings(sharedSettings)
   .settings(name := "kit")
-  .jvmSettings(commonJvmSettings)
-  .nativeSettings(commonNativeSettings)
-  .jsSettings(commonJsSettings)
+  .jvmSettings(sharedJvmSettings)
+  .nativeSettings(sharedNativeSettings)
+  .jsSettings(sharedJsSettings)
+
+// ── kitd: privileged daemon ─────────────────────────────────────────
 
 lazy val kitd = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .in(file("kitd"))
-  .settings(commonSettings)
+  .dependsOn(common)
+  .settings(sharedSettings)
   .settings(name := "kitd")
-  .jvmSettings(commonJvmSettings)
-  .nativeSettings(commonNativeSettings)
-  .jsSettings(commonJsSettings)
+  .jvmSettings(sharedJvmSettings)
+  .nativeSettings(sharedNativeSettings)
+  .jsSettings(sharedJsSettings)
+
+// ── root aggregate ──────────────────────────────────────────────────
 
 lazy val root = project
   .in(file("."))
-  .aggregate(kit.js, kit.jvm, kit.native, kitd.js, kitd.jvm, kitd.native)
+  .aggregate(
+    common.js, common.jvm, common.native,
+    kit.js, kit.jvm, kit.native,
+    kitd.js, kitd.jvm, kitd.native,
+  )
   .settings(
     name                := "kitpm.dev",
     publish / skip      := true,

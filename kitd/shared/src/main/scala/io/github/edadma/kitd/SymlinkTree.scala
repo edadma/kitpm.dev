@@ -1,4 +1,6 @@
-package io.github.edadma.kit
+package io.github.edadma.kitd
+
+import io.github.edadma.kit.*
 
 /**
  * Plans the symlink tree for a generation directory.
