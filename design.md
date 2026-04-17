@@ -1217,8 +1217,10 @@ requires-features = []
 Each test declares:
 
 - `name` — human-readable identifier. Must be unique within the manifest.
-- `binary` — path to the test executable, relative to the store entry. Exits 0 on pass, non-zero on fail. Stdout/stderr are captured.
+- `binary` — path to the test script, relative to the store entry. Must be a POSIX shell script (`#!/bin/sh`). Exits 0 on pass, non-zero on fail. Stdout/stderr are captured.
 - `requires-features` — features the test needs. Tests whose features are unavailable are skipped with a clear diagnostic, not failed.
+
+**Why shell only:** Test scripts must be independent of the software they test. If a Python package ships tests written in Python and the package is broken, the test script itself can't run — producing a cryptic interpreter failure instead of a clear diagnostic. POSIX shell is the one language guaranteed to exist on every Kit platform. It tests the package by running it as a subprocess and checking exit codes and output. The test infrastructure never depends on the thing it's testing.
 
 ### 22.2 Execution Model
 
