@@ -1254,7 +1254,18 @@ A test result is stamped with the package's content hash. Since the content hash
 
 This means `kit test --all` can skip packages whose content hash already has a passing result in the database. `kit test --all --force` ignores cached results and retests everything.
 
-### 22.5 What Tests Are Not
+### 22.5 Test Filtering and Reporting
+
+Before execution, each declared test is evaluated against the installation's available features. Tests whose `requires-features` are satisfied are marked **Run**; tests with missing features are marked **Skip** with a diagnostic naming the missing features. This is a pure function — no I/O, no filesystem — and is tested at tier 0.
+
+After execution, results are summarized as counts (passed, failed, skipped) and formatted for CLI display. Two report modes:
+
+- **Per-package report:** package name, one line per test (PASS/FAIL/SKIP with duration), summary footer.
+- **Batch report:** one per-package report per tested package, plus a total summary across all packages.
+
+Cache checking is also pure: given a list of cached results and a content hash, determine whether all tests for that hash passed. If so, `kit test --all` skips the package unless `--force` is given.
+
+### 22.6 What Tests Are Not
 
 - **Not build tests.** These test the packaged artifact, not the build process. Build tests are the responsibility of `kit-build` (future).
 - **Not Kit's own tests.** Kit's tier 0–3 tests verify Kit itself. Package tests verify the software Kit installs.
