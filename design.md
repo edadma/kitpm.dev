@@ -274,6 +274,8 @@ The content hash is computed over the tarball bytes after canonicalization:
 
 Excluding provenance from the hash is the mechanical guarantee of invariant 5: two artifacts with identical contents produce identical hashes regardless of origin.
 
+Because `manifest.toml` is inside the tarball and contributes to the content hash, changes to effects, dependencies, or metadata produce a new content hash. An effect change is a new package, not a silent mutation.
+
 ### 6.4 Provenance
 
 ```toml
@@ -411,6 +413,8 @@ The **sandbox adapter**, if present, strengthens this with platform-specific pri
 
 **Re-run:** `kit reconfigure` re-runs all generators whose inputs have changed.
 
+**Generator chaining:** A generator's inputs may include another generator's declared output. For example, openssl's generator produces `/etc/ssl/certs/ca-certificates.crt`; nginx's generator declares that path as an input. The activation engine orders generators by the package dependency graph — since nginx depends on openssl, openssl's generator runs first. No additional coordination mechanism is needed; the dependency graph and declared inputs/outputs are sufficient.
+
 **Rationale:** This is the escape valve for config templating, host-key generation, CA bundle compilation. It is the primary place package-provided code runs during activation, and the sandbox is tight by design: declared inputs, declared output, no ambient authority.
 
 ### 7.7 first-run
@@ -538,7 +542,7 @@ For a transition from generation *N* to generation *N+1* on a profile *P*:
 2. Compute the effect set of *N+1* by merging effects declared by the closure of *N+1*.
 3. Validate: no conflicting effects (two users with the same name but different groups, two generators writing to the same output, etc.). Check required features against installed adapters.
 4. Diff: compute the ordered lists of effects to add, remove, and update.
-5. Order by dependencies: groups before users, users before directories, directories before services, generators before services that consume them.
+5. Order by dependencies. Two levels of ordering apply: first, effect types are ordered (groups before users, users before directories, generators before services). Second, within a type, effects are ordered by the package dependency graph — if package A depends on package B, B's effects of a given type run before A's. This ensures generator chaining works: if A's generator declares B's generator output as an input, B's generator runs first.
 6. For each effect in plan order:
    a. Apply, invoking the appropriate adapter where required.
    b. Write a journal entry recording the effect, its inverse, and any assigned state.
