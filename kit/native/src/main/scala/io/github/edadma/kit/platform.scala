@@ -1,0 +1,3 @@
+package io.github.edadma.kit
+
+val platform = "native"

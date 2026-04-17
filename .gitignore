@@ -1,0 +1,10 @@
+target/
+node_modules/
+dist/
+.idea/
+.bsp/
+.metals/
+.vscode/
+*.class
+*.log
+CLAUDE.md
