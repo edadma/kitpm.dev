@@ -19,9 +19,9 @@ Resolution is a simple transitive closure walk. There's no SAT solver, no backtr
 
 ## 3. Separation of concerns
 
-The package manager fetches, verifies, registers, composes, and activates. It does not build.
+Kit is a full package manager: `kit install firefox` resolves dependencies, fetches pre-built packages, extracts them into the store, constructs a generation, runs activation, and gives you a working Firefox. What Kit does *not* do is build packages from source — that's a separate tool (`kit-build`, planned) with a separate complexity budget.
 
-Building and installing are different problems with different complexity budgets. Fusing them (as Nix does) creates a system where understanding installation requires understanding the build language. Kit keeps them separate.
+Building and installing are different problems. Fusing them (as Nix does) creates a system where understanding installation requires understanding the build language. Kit keeps them separate so that installing software never requires knowing how it was compiled.
 
 ## 4. Profile composition
 

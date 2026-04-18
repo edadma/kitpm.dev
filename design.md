@@ -45,7 +45,7 @@ Every design decision below is in service of these seven invariants. Features th
 
 1. **Immutability.** Store paths are content-addressed and never mutated after creation.
 2. **Exact pinning.** Dependency references name exact versions and exact content hashes. No version ranges, no constraint solving, ever.
-3. **Separation of concerns.** The package manager fetches, verifies, registers, composes, and activates. It does not build. Outside of a narrow, sandboxed activation surface, it does not execute package code.
+3. **Separation of concerns.** Kit is a full package manager — it fetches, verifies, installs, composes, and activates. What it does not do is build packages from source; that's a separate tool with a separate complexity budget. Outside of a narrow, sandboxed activation surface, it does not execute package code.
 4. **Profile composition.** Each principal (user, system) has its own profile with its own generation history. Environments are composed from profiles, not conflicts resolved between them.
 5. **Identity is content.** A store path is identified by the content hash of its bytes. The origin of those bytes — fetched, built, copied — is metadata, not identity.
 6. **Bounded effects.** Every system state change a package can request is drawn from a fixed, enumerable schema of effect types, each with a defined inverse. No package can declare an effect outside the schema. No package-provided code runs during activation except through narrowly-sandboxed generators and first-run hooks with declared inputs and outputs.
