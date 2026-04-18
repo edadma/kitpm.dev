@@ -152,9 +152,22 @@ class Daemon(val root: String):
             finally stream.close()
 
   private def extractToStore(blobPath: Path, storePath: Path): Unit =
-    // For now: copy the directory tree (real implementation would extract a tarball)
     Files.createDirectories(storePath)
-    copyDirectory(blobPath, storePath)
+    if Files.isDirectory(blobPath) then
+      // Directory mode: copy tree (used by tests with pre-extracted fixtures)
+      copyDirectory(blobPath, storePath)
+    else
+      // Kit package format: read and extract files
+      val bytes = Files.readAllBytes(blobPath)
+      PackageFormat.readBytes(bytes) match
+        case Left(err) => throw new RuntimeException(s"Failed to read package $blobPath: $err")
+        case Right(pkg) =>
+          for f <- pkg.files do
+            val dest = storePath.resolve(f.path)
+            Files.createDirectories(dest.getParent)
+            Files.write(dest, f.data)
+            if (f.mode & 0x49) != 0 then // any execute bit set
+              dest.toFile.setExecutable(true)
 
   private def copyDirectory(src: Path, dst: Path): Unit =
     val stream = Files.walk(src)
