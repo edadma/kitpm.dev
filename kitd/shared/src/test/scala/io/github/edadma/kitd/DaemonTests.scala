@@ -353,6 +353,183 @@ class DaemonTests extends AnyFreeSpec with Matchers with BeforeAndAfterEach {
     output shouldBe "hello world"
   }
 
+  // --- Rollback tests ---
+
+  "rollback to previous generation" in {
+    val blob1 = createHelloBlob()
+    daemon.install(helloManifest, blob1, system = false) // gen 1
+    deleteRecursive(blob1)
+
+    val blob2 = Files.createTempDirectory("kit-blob-")
+    Files.createDirectories(blob2.resolve("bin"))
+    Files.writeString(blob2.resolve("bin/greet"), "#!/bin/sh\necho greet\n")
+    Files.writeString(blob2.resolve("manifest.toml"), "name = \"greet\"")
+    val greetManifest = Manifest(
+      "greet", "1.0", "x86_64-linux-gnu",
+      ContentHash("sha256", "greet-hash"), Scope.User, Nil, Nil, Effects.empty, Nil,
+    )
+    daemon.install(greetManifest, blob2, system = false) // gen 2
+    deleteRecursive(blob2)
+
+    daemon.list(system = false) should have length 2
+
+    val result = daemon.rollback(system = false)
+    result.isRight shouldBe true
+    result.toOption.get shouldBe 1
+
+    daemon.list(system = false) should have length 1
+    daemon.list(system = false).head.name shouldBe "hello"
+  }
+
+  "rollback to specific generation" in {
+    val blob = createHelloBlob()
+    daemon.install(helloManifest, blob, system = false) // gen 1
+    deleteRecursive(blob)
+
+    daemon.remove("hello", system = false) // gen 2
+
+    daemon.list(system = false) shouldBe empty
+
+    val result = daemon.rollback(system = false, toGeneration = Some(1))
+    result.isRight shouldBe true
+
+    daemon.list(system = false) should have length 1
+    daemon.list(system = false).head.name shouldBe "hello"
+  }
+
+  "rollback with no generations fails" in {
+    daemon.rollback(system = false) shouldBe Left("no generation to roll back to")
+  }
+
+  "rollback to nonexistent generation fails" in {
+    val blob = createHelloBlob()
+    daemon.install(helloManifest, blob, system = false)
+    deleteRecursive(blob)
+
+    daemon.rollback(system = false, toGeneration = Some(99)) shouldBe Left("generation 99 does not exist")
+  }
+
+  "rollback to current generation fails" in {
+    val blob = createHelloBlob()
+    daemon.install(helloManifest, blob, system = false)
+    deleteRecursive(blob)
+
+    daemon.rollback(system = false, toGeneration = Some(1)) shouldBe Left("already at that generation")
+  }
+
+  // --- Multiple generations ---
+
+  "list generations" in {
+    val blob = createHelloBlob()
+    daemon.install(helloManifest, blob, system = false) // gen 1
+    deleteRecursive(blob)
+
+    daemon.remove("hello", system = false) // gen 2
+
+    val profile = daemon.profiles.profileDir(system = false)
+    val gens = daemon.profiles.listGenerations(profile)
+    gens shouldBe List(1, 2)
+    daemon.profiles.currentGeneration(profile) shouldBe 2
+  }
+
+  // --- Content hash verification ---
+
+  "content hash of .kit file is deterministic" in {
+    val bytes1 = PackageFormat.writeBytes(PackageFormat.Package(
+      manifest = helloManifestToml,
+      files = List(
+        PackageFormat.FileEntry("bin/hello", 0x1ed, helloScript.getBytes("UTF-8")),
+      ),
+    ))
+    val bytes2 = PackageFormat.writeBytes(PackageFormat.Package(
+      manifest = helloManifestToml,
+      files = List(
+        PackageFormat.FileEntry("bin/hello", 0x1ed, helloScript.getBytes("UTF-8")),
+      ),
+    ))
+    ContentHasher.sha256(bytes1) shouldBe ContentHasher.sha256(bytes2)
+  }
+
+  "different .kit files produce different hashes" in {
+    val bytes1 = PackageFormat.writeBytes(PackageFormat.Package(
+      manifest = helloManifestToml,
+      files = List(PackageFormat.FileEntry("bin/hello", 0x1ed, "v1".getBytes("UTF-8"))),
+    ))
+    val bytes2 = PackageFormat.writeBytes(PackageFormat.Package(
+      manifest = helloManifestToml,
+      files = List(PackageFormat.FileEntry("bin/hello", 0x1ed, "v2".getBytes("UTF-8"))),
+    ))
+    ContentHasher.sha256(bytes1) should not be ContentHasher.sha256(bytes2)
+  }
+
+  // --- Pack/unpack roundtrip ---
+
+  "pack and unpack roundtrip preserves files" in {
+    // Create a source directory
+    val srcDir = Files.createTempDirectory("kit-pack-src-")
+    val binDir = srcDir.resolve("bin")
+    Files.createDirectories(binDir)
+    Files.writeString(binDir.resolve("hello"), helloScript)
+    binDir.resolve("hello").toFile.setExecutable(true)
+    Files.writeString(srcDir.resolve("manifest.toml"), helloManifestToml)
+
+    // Pack it
+    val files = List.newBuilder[PackageFormat.FileEntry]
+    val walk = Files.walk(srcDir)
+    try
+      walk.forEach { path =>
+        if Files.isRegularFile(path) then
+          val rel = srcDir.relativize(path).toString
+          val mode = if path.toFile.canExecute then 0x1ed else 0x1a4
+          files += PackageFormat.FileEntry(rel, mode, Files.readAllBytes(path))
+      }
+    finally walk.close()
+
+    val pkg = PackageFormat.Package(helloManifestToml, files.result().sortBy(_.path))
+    val kitBytes = PackageFormat.writeBytes(pkg)
+
+    // Unpack it
+    val dstDir = Files.createTempDirectory("kit-pack-dst-")
+    val readPkg = PackageFormat.readBytes(kitBytes).toOption.get
+    for f <- readPkg.files do
+      val dest = dstDir.resolve(f.path)
+      Files.createDirectories(dest.getParent)
+      Files.write(dest, f.data)
+      if (f.mode & 0x49) != 0 then dest.toFile.setExecutable(true)
+
+    // Verify
+    val helloContent = new String(Files.readAllBytes(dstDir.resolve("bin/hello")))
+    helloContent shouldBe helloScript
+    dstDir.resolve("bin/hello").toFile.canExecute shouldBe true
+
+    val manifestContent = new String(Files.readAllBytes(dstDir.resolve("manifest.toml")))
+    manifestContent shouldBe helloManifestToml
+
+    deleteRecursive(srcDir)
+    deleteRecursive(dstDir)
+  }
+
+  // --- Store deduplication ---
+
+  "store entry reused when same hash installed to different profile" in {
+    // Install to user profile
+    val blob1 = createHelloBlob()
+    daemon.install(helloManifest, blob1, system = false)
+    deleteRecursive(blob1)
+
+    // Install same package to system profile
+    val blob2 = createHelloBlob()
+    val systemManifest = helloManifest.copy(scope = Scope.System)
+    daemon.install(systemManifest, blob2, system = true)
+    deleteRecursive(blob2)
+
+    // Only one store entry should exist for this hash
+    val storeEntries = daemon.store.listHashes()
+    storeEntries.count(_ == helloManifest.contentHash) shouldBe 1
+  }
+
+  // --- .kit file lifecycle ---
+
   "full lifecycle with .kit file" in {
     val kitFile = createHelloKitFile()
 

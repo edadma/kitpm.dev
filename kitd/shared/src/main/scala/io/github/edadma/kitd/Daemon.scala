@@ -83,6 +83,23 @@ class Daemon(val root: String):
     profiles.switchCurrent(profile, genNum)
     Right(genNum)
 
+  // --- Rollback ---
+
+  def rollback(system: Boolean, toGeneration: Option[Int] = None): Either[String, Int] =
+    val profile = profiles.profileDir(system)
+    val current = profiles.currentGeneration(profile)
+    if current == 0 then return Left("no generation to roll back to")
+
+    val target = toGeneration.getOrElse(current - 1)
+    if target < 0 then return Left(s"invalid generation: $target")
+    if target == current then return Left("already at that generation")
+
+    val genDir = profile.resolve(s"generations/$target")
+    if !Files.exists(genDir) then return Left(s"generation $target does not exist")
+
+    profiles.switchCurrent(profile, target)
+    Right(target)
+
   // --- List ---
 
   def list(system: Boolean): List[GenerationPackageEntry] =
