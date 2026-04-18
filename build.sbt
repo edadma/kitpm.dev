@@ -80,6 +80,7 @@ lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "io.github.edadma" %%% "toml"           % "0.1.0",
       "io.github.edadma" %%% "petradb-engine" % "1.5.2",
+      "dev.zio"          %%% "zio-json"       % "0.7.36",
     ),
   )
   .jvmSettings(sharedJvmSettings)
