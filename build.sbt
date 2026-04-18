@@ -82,6 +82,7 @@ lazy val common = crossProject(/* JSPlatform, */ JVMPlatform, NativePlatform)
       "io.github.edadma" %%% "toml"              % "0.1.0",
       "io.github.edadma" %%% "petradb-engine"    % "1.5.2",
       "io.github.edadma" %%% "cross_platform"    % "0.1.5",
+      "io.github.edadma" %%% "crypto"            % "0.0.1",
       "dev.zio"          %%% "zio-json"          % "0.7.36",
     ),
   )

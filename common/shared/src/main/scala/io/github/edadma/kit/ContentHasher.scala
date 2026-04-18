@@ -1,15 +1,13 @@
 package io.github.edadma.kit
 
-import java.security.MessageDigest
+import io.github.edadma.crypto.Crypto
 
 /** Computes content hashes over byte arrays. */
 object ContentHasher:
 
   /** Compute the SHA-256 content hash of a byte array. */
   def sha256(bytes: Array[Byte]): ContentHash =
-    val digest = MessageDigest.getInstance("SHA-256")
-    val hash = digest.digest(bytes)
-    ContentHash("sha256", bytesToHex(hash))
+    ContentHash("sha256", Crypto.toHex(Crypto.sha256(bytes)))
 
   /** Compute the SHA-256 content hash of a string (UTF-8 encoded). */
   def sha256(s: String): ContentHash =
@@ -20,6 +18,3 @@ object ContentHasher:
     expected.algorithm match
       case "sha256" => sha256(bytes) == expected
       case _        => false
-
-  private def bytesToHex(bytes: Array[Byte]): String =
-    bytes.map(b => f"${b & 0xff}%02x").mkString

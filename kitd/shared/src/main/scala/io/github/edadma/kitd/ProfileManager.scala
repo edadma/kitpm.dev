@@ -46,10 +46,11 @@ class ProfileManager(root: String):
     val target = Paths.get(s"generations/$genNum")
     val tmp = profile.resolve(".current-tmp")
 
-    // Create new symlink at temp location, then atomic rename
+    // Create new symlink at temp location, then replace current
     Files.deleteIfExists(tmp)
     Files.createSymbolicLink(tmp, target)
-    Files.move(tmp, current, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    Files.deleteIfExists(current)
+    Files.move(tmp, current)
 
   /** List all generation numbers for a profile. */
   def listGenerations(profile: Path): List[Int] =
