@@ -125,7 +125,7 @@ lazy val repo = project
     Test / scalaJSUseTestModuleInitializer := true,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "apion" % "0.0.12",
+      "io.github.edadma" %%% "apion" % "0.0.13",
     ),
   )
 
