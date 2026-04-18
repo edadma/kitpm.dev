@@ -596,17 +596,33 @@ Given the same inputs, it produces the same outcome.
 
 ## 10. Repositories
 
-A repository is a signed, versioned, HTTP-accessible collection of manifests and blobs.
+A repository is a signed, versioned collection of manifests and blobs, served over HTTP by a repository server.
+
+### 10.1 Repository Server
+
+The repository server (`repo`) is a small HTTP service that stores packages and serves them to clients. It exposes two surfaces:
+
+**Public (unauthenticated):**
+- `GET /index.toml` — the signed package index
+- `GET /manifests/<content-hash>.toml` — individual package manifests
+- `GET /blobs/<content-hash>.tar.zst` — package tarballs
+
+**Admin (authenticated via bearer token):**
+- `POST /add` — upload a package tarball; the server canonicalizes, hashes, stores, and updates the index
+- `POST /sign` — regenerate and re-sign the index
+- `GET /verify` — check that all blobs match their declared hashes
+
+The server stores everything on its own disk. The admin never needs to hold a full copy of the repository locally — they upload packages directly via `kit add`.
 
 ```
-<repo-url>/
+<repo-storage>/
   index.toml                      # signed
   manifests/<content-hash>.toml
   blobs/<content-hash>.tar.zst
   recipes/<input-hash>.toml       # (Future)
 ```
 
-### 10.1 Index
+### 10.2 Index
 
 ```toml
 repo-name = "kit-stable"
@@ -623,7 +639,7 @@ scope = "system"
 
 The index is signed. Clients verify against trusted keys before trusting any content hash.
 
-### 10.2 Trust Configuration
+### 10.3 Trust Configuration
 
 ```
 <root>/etc/kit/repos.toml
@@ -645,9 +661,19 @@ targets = ["aarch64-apple-darwin"]
 
 Higher priority wins on name conflicts. `targets` narrows which platform triples this repo serves, avoiding unnecessary index fetches.
 
-### 10.3 Multiple Repositories
+### 10.4 Multiple Repositories
 
 Lookup spans all configured repositories in priority order. Name conflicts resolve by priority. Different closures can pull different versions; both coexist in the store.
+
+### 10.5 Architecture-Specific Repositories
+
+Separate repos per architecture keep indexes small and avoid unnecessary downloads:
+
+- `https://repo.kitpm.dev/stable` — Linux x86_64 and aarch64
+- `https://repo.kitpm.dev/macos` — macOS aarch64
+- `https://repo.kitpm.dev/slix` — Slix (TRISC and x86_64)
+
+Each is an independent repository server instance. They can share signing keys or use separate ones.
 
 ---
 
@@ -868,6 +894,13 @@ kit upgrade [<name>] [--system]
 kit rollback [--to <gen>] [--system]
 kit reconfigure [--system]
 
+# Repository
+kit update                        # fetch latest indexes from all repos
+kit search <query>                # search across repos
+kit add <tarball>                 # upload package to repo (admin)
+kit sign                          # re-sign repo index (admin)
+kit verify                        # check repo integrity (admin)
+
 # Services
 kit service { list | status | start | stop | restart | enable | disable } [<name>]
 
@@ -881,7 +914,6 @@ kit caps list
 kit users list
 kit adapters list
 kit features
-kit verify
 
 # Package testing
 kit test <name>                   # install into isolated root, run declared tests, tear down
@@ -893,7 +925,6 @@ kit gc [--dry-run]
 kit pin <content-hash>
 kit unpin <content-hash>
 kit purge <name>
-kit repo { add | remove | update } [...]
 kit adapter { install | remove } <name>
 
 # Future

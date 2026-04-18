@@ -37,6 +37,31 @@ Restores a previous generation. Without `--to`, rolls back one generation. With 
 
 Re-runs generator effects whose inputs have changed. Edit `<root>/etc/kit/system.toml`, then run `kit reconfigure` to regenerate config files and restart affected services.
 
+## Repository
+
+```sh
+kit update                        # fetch latest indexes from all repos
+kit search <query>                # search across repos by name/description
+```
+
+### update
+
+Fetches the latest signed index from every configured repository. The index is verified against trusted keys before use.
+
+### search
+
+Searches across all locally-cached indexes, filtered by the current platform's target triple. No network request — uses the index from the last `kit update`.
+
+### Admin commands
+
+These require authentication to the repository server (bearer token):
+
+```sh
+kit add <tarball>                 # upload package to repo server
+kit sign                          # tell repo server to re-sign its index
+kit verify                        # check repo integrity (all blobs match hashes)
+```
+
 ## Package testing
 
 ```sh
@@ -73,7 +98,6 @@ kit caps list                        # file capabilities in effect
 kit users list                       # kit-managed users
 kit adapters list                    # installed adapters
 kit features                         # available platform features
-kit verify                           # verify store integrity
 ```
 
 ## Administration
@@ -83,9 +107,6 @@ kit gc [--dry-run]                   # garbage-collect unreachable store entries
 kit pin <content-hash>               # prevent GC from collecting a store entry
 kit unpin <content-hash>
 kit purge <name>                     # remove package + all state (dirs, first-run)
-kit repo add <url> --key <keyfile>   # add a signed repository
-kit repo remove <url>
-kit repo update                      # refresh repository indexes
 kit adapter install <name>           # register an adapter
 kit adapter remove <name>
 ```

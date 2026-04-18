@@ -109,6 +109,26 @@ lazy val kitd = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .nativeSettings(sharedNativeSettings)
   .jsSettings(sharedJsSettings)
 
+// ── repo: repository server (Scala.js / Node.js via Apion) ─────────
+
+lazy val repo = project
+  .in(file("repo"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(common.js)
+  .settings(sharedSettings)
+  .settings(
+    name := "kit-repo",
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) },
+    scalaJSLinkerConfig ~= { _.withSourceMap(false) },
+    scalaJSUseMainModuleInitializer        := true,
+    Test / scalaJSUseMainModuleInitializer := false,
+    Test / scalaJSUseTestModuleInitializer := true,
+    jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
+    libraryDependencies ++= Seq(
+      "io.github.edadma" %%% "apion" % "0.0.12",
+    ),
+  )
+
 // ── root aggregate ──────────────────────────────────────────────────
 
 lazy val root = project
@@ -117,6 +137,7 @@ lazy val root = project
     common.js, common.jvm, common.native,
     kit.js, kit.jvm, kit.native,
     kitd.js, kitd.jvm, kitd.native,
+    repo,
   )
   .settings(
     name                := "kitpm.dev",
