@@ -259,35 +259,37 @@ Effects paths like `/var/lib/nginx` are relative to the root at application time
 
 **Future-proofing:** a future `input-hash` field will identify the build plan that produced a source-built package. Today, `content-hash` is the only hash; naming it explicitly leaves namespace for `input-hash` later without migration.
 
-### 6.2 Tarball Layout
+### 6.2 Package File Format
+
+Kit uses its own binary package format (`.kit` files) rather than tarballs. The format is simple enough to implement in any language with zero external dependencies — critical for bootstrapping on Slix where `tar` and `zlib` may not yet be installed.
 
 ```
-<package>.tar.zst
-├── bin/
-├── sbin/
-├── lib/
-├── share/
-├── manifest.toml          # identical to the repo manifest
-└── .kit-provenance        # origin metadata; excluded from content hash
+KITPKG01                           # 8-byte magic + version
+<manifest-length: u32>             # big-endian
+<manifest TOML: UTF-8 bytes>
+<file-count: u32>                  # big-endian
+for each file:
+  <path-length: u16>              # big-endian
+  <path: UTF-8 bytes>             # relative, forward slashes
+  <mode: u16>                     # big-endian (e.g., 0755 = 0x01ED)
+  <original-size: u32>            # big-endian, uncompressed size
+  <compressed-size: u32>          # big-endian
+  <compressed-data: bytes>        # LZ4-style compressed
 ```
 
-The manifest is duplicated inside the tarball so a store entry is self-describing. The daemon cross-checks the two copies; they must match.
+Each file's data is individually compressed using a built-in LZ4-style compressor — pure Scala, zero external dependencies. Typical compression ratios: 70%+ for text and scripts, 40-60% for compiled binaries, near-zero expansion for incompressible data. The compressor and decompressor are each ~120 lines.
+
+The manifest is embedded in the package so each store entry is self-describing. The daemon cross-checks the embedded manifest against the repo manifest; they must match.
 
 Binaries have dependency references pointing into the store at exact paths via the platform's mechanism: RPATH on Linux and BSDs, `@rpath` with absolute install names on macOS, direct paths on Slix. This is enforced by whatever produced the package; the daemon does not rewrite references.
 
-### 6.3 Content Hash Canonicalization
+`kit pack` creates `.kit` files from a directory. `kit unpack` extracts them. The format version in the magic (`01`) allows future versions to change compression or add features without breaking existing readers.
 
-The content hash is computed over the tarball bytes after canonicalization:
+### 6.3 Content Hash
 
-- Deterministic entry ordering (lexicographic by path).
-- Fixed mtime (0 or a documented epoch).
-- Fixed uid/gid (0/0).
-- Fixed permissions (clear setuid/setgid/sticky; normalize to 0755/0644).
-- Exclude `.kit-provenance` from the hash computation.
+The content hash is computed over the entire `.kit` file bytes (SHA-256). The `kit pack` command produces deterministic output: files are ordered lexicographically by path, and the same directory contents always produce the same `.kit` file bytes.
 
-Excluding provenance from the hash is the mechanical guarantee of invariant 5: two artifacts with identical contents produce identical hashes regardless of origin.
-
-Because `manifest.toml` is inside the tarball and contributes to the content hash, changes to effects, dependencies, or metadata produce a new content hash. An effect change is a new package, not a silent mutation.
+Because the manifest is inside the package and contributes to the content hash, changes to effects, dependencies, or metadata produce a new content hash. An effect change is a new package, not a silent mutation.
 
 ### 6.4 Provenance
 
