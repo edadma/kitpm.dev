@@ -34,14 +34,15 @@ object ProtocolJson:
   given JsonDecoder[RequestEnvelope] = DeriveJsonDecoder.gen
 
   def encodeRequest(req: Protocol.Request): String =
+    def esc(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"")
     req match
-      case r: Protocol.InstallRequest     => s"""{"op":"install","payload":${r.toJson}}"""
-      case r: Protocol.RemoveRequest      => s"""{"op":"remove","payload":${r.toJson}}"""
-      case r: Protocol.ListRequest        => s"""{"op":"list","payload":${r.toJson}}"""
-      case r: Protocol.RollbackRequest    => s"""{"op":"rollback","payload":${r.toJson}}"""
-      case r: Protocol.GCRequest          => s"""{"op":"gc","payload":${r.toJson}}"""
-      case r: Protocol.TestRequest        => s"""{"op":"test","payload":${r.toJson}}"""
-      case r: Protocol.GenerationsRequest => s"""{"op":"generations","payload":${r.toJson}}"""
+      case r: Protocol.InstallRequest     => s"""{"op":"install","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.RemoveRequest      => s"""{"op":"remove","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.ListRequest        => s"""{"op":"list","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.RollbackRequest    => s"""{"op":"rollback","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.GCRequest          => s"""{"op":"gc","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.TestRequest        => s"""{"op":"test","payload":"${esc(r.toJson)}"}"""
+      case r: Protocol.GenerationsRequest => s"""{"op":"generations","payload":"${esc(r.toJson)}"}"""
       case Protocol.PingRequest           => """{"op":"ping","payload":"{}"}"""
 
   // --- Response codecs ---
