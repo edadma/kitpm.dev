@@ -3,11 +3,7 @@ package io.github.edadma.kitd
 import io.github.edadma.kit.*
 import io.github.edadma.kit.Protocol.*
 import io.github.edadma.kit.ProtocolJson.{given, *}
-
-import java.io.{BufferedReader, InputStreamReader, OutputStreamWriter, PrintWriter}
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel, Channels}
-import java.nio.file.{Files, Path, Paths}
+import io.github.edadma.cross_platform.{createSocketServer, SocketServer, SocketConnection}
 
 import zio.json.*
 
@@ -17,16 +13,13 @@ import zio.json.*
  */
 class DaemonServer(daemon: Daemon):
   private val prefix = if daemon.root.endsWith("/") then daemon.root.dropRight(1) else daemon.root
-  private val socketPath = Paths.get(s"$prefix/kit/var/kitd.sock")
+  val socketPath: String = s"$prefix/kit/var/kitd.sock"
 
-  import scala.compiletime.uninitialized
-  private var serverChannel: ServerSocketChannel = uninitialized
+  private var server: SocketServer = scala.compiletime.uninitialized
   @volatile private var running = false
 
   def start(): Unit =
-    Files.deleteIfExists(socketPath)
-    serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-    serverChannel.bind(UnixDomainSocketAddress.of(socketPath))
+    server = createSocketServer(socketPath)
     running = true
 
     val thread = new Thread(() => acceptLoop(), "kitd-accept")
@@ -35,40 +28,32 @@ class DaemonServer(daemon: Daemon):
 
   def stop(): Unit =
     running = false
-    if serverChannel != null then
-      serverChannel.close()
-    Files.deleteIfExists(socketPath)
-
-  def socketFile: Path = socketPath
+    if server != null then server.close()
 
   private def acceptLoop(): Unit =
     while running do
       try
-        val client = serverChannel.accept()
-        if client != null then
-          val handler = new Thread(() => handleClient(client), "kitd-handler")
-          handler.setDaemon(true)
-          handler.start()
+        val conn = server.accept()
+        val handler = new Thread(() => handleClient(conn), "kitd-handler")
+        handler.setDaemon(true)
+        handler.start()
       catch
-        case _: java.nio.channels.AsynchronousCloseException => () // server shutting down
+        case _: java.io.IOException if !running => () // server shutting down
         case e: Exception =>
           if running then System.err.println(s"kitd: accept error: ${e.getMessage}")
 
-  private def handleClient(channel: SocketChannel): Unit =
+  private def handleClient(conn: SocketConnection): Unit =
     try
-      val in = new BufferedReader(new InputStreamReader(Channels.newInputStream(channel)))
-      val out = new PrintWriter(new OutputStreamWriter(Channels.newOutputStream(channel)), true)
-
-      val line = in.readLine()
-      if line != null then
-        val response = dispatch(line)
-        out.println(response)
-
-      channel.close()
+      conn.readLine() match
+        case None => ()
+        case Some(line) =>
+          val response = dispatch(line)
+          conn.writeLine(response)
+      conn.close()
     catch
       case e: Exception =>
         System.err.println(s"kitd: handler error: ${e.getMessage}")
-        try channel.close() catch case _: Exception => ()
+        try conn.close() catch case _: Exception => ()
 
   private def dispatch(json: String): String =
     json.fromJson[RequestEnvelope] match
@@ -78,14 +63,6 @@ class DaemonServer(daemon: Daemon):
         val response = envelope.op match
           case "ping" =>
             SuccessResponse(PongData(daemon.root, "0.0.1"))
-
-          case "install" =>
-            envelope.payload.fromJson[InstallRequest] match
-              case Left(err) => ErrorResponse(s"invalid install request: $err")
-              case Right(req) =>
-                // For now: install requires a pre-fetched blob path in the request
-                // Full implementation will resolve + fetch from repos
-                ErrorResponse("install via IPC not yet implemented (use daemon.install directly)")
 
           case "remove" =>
             envelope.payload.fromJson[RemoveRequest] match
@@ -117,7 +94,7 @@ class DaemonServer(daemon: Daemon):
                 val profile = daemon.profiles.profileDir(req.system)
                 val current = daemon.profiles.currentGeneration(profile)
                 val gens = daemon.profiles.listGenerations(profile).map { n =>
-                  GenerationEntry(n, 0) // TODO: read package count from manifest
+                  GenerationEntry(n, 0)
                 }
                 SuccessResponse(GenerationsData(gens, current))
 

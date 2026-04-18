@@ -41,7 +41,7 @@ class DaemonServerTests extends AnyFreeSpec with Matchers with BeforeAndAfterEac
     Files.deleteIfExists(path)
 
   private def send(request: Request): Either[String, Response] =
-    DaemonClient.send(server.socketFile, request)
+    DaemonClient.send(server.socketPath, request)
 
   // --- Tests ---
 

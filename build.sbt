@@ -61,6 +61,7 @@ val sharedNativeSettings = Seq(
   libraryDependencies += "org.scala-js" %% "scalajs-stubs" % "1.1.0" % "provided",
 )
 
+// JS settings kept for repo subproject
 val sharedJsSettings = Seq(
   jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
@@ -72,49 +73,50 @@ val sharedJsSettings = Seq(
 
 // ── common: shared types, parsing, resolution, effects ──────────────
 
-lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
+lazy val common = crossProject(/* JSPlatform, */ JVMPlatform, NativePlatform)
   .in(file("common"))
   .settings(sharedSettings)
   .settings(
     name := "kit-common",
     libraryDependencies ++= Seq(
-      "io.github.edadma" %%% "toml"           % "0.1.0",
-      "io.github.edadma" %%% "petradb-engine" % "1.5.2",
-      "dev.zio"          %%% "zio-json"       % "0.7.36",
+      "io.github.edadma" %%% "toml"              % "0.1.0",
+      "io.github.edadma" %%% "petradb-engine"    % "1.5.2",
+      "io.github.edadma" %%% "cross_platform"    % "0.1.5",
+      "dev.zio"          %%% "zio-json"          % "0.7.36",
     ),
   )
   .jvmSettings(sharedJvmSettings)
   .nativeSettings(sharedNativeSettings)
-  .jsSettings(sharedJsSettings)
+//  .jsSettings(sharedJsSettings)
 
 // ── kit: unprivileged CLI client ────────────────────────────────────
 
-lazy val kit = crossProject(JSPlatform, JVMPlatform, NativePlatform)
+lazy val kit = crossProject(/* JSPlatform, */ JVMPlatform, NativePlatform)
   .in(file("kit"))
   .dependsOn(common)
   .settings(sharedSettings)
   .settings(name := "kit")
   .jvmSettings(sharedJvmSettings)
   .nativeSettings(sharedNativeSettings)
-  .jsSettings(sharedJsSettings)
+//  .jsSettings(sharedJsSettings)
 
 // ── kitd: privileged daemon ─────────────────────────────────────────
 
-lazy val kitd = crossProject(JSPlatform, JVMPlatform, NativePlatform)
+lazy val kitd = crossProject(/* JSPlatform, */ JVMPlatform, NativePlatform)
   .in(file("kitd"))
   .dependsOn(common)
   .settings(sharedSettings)
   .settings(name := "kitd")
   .jvmSettings(sharedJvmSettings)
   .nativeSettings(sharedNativeSettings)
-  .jsSettings(sharedJsSettings)
+//  .jsSettings(sharedJsSettings)
 
 // ── repo: repository server (Scala.js / Node.js via Apion) ─────────
 
 lazy val repo = project
   .in(file("repo"))
   .enablePlugins(ScalaJSPlugin)
-  .dependsOn(common.js)
+//  .dependsOn(common.js)  // commented out until JS is re-enabled for common
   .settings(sharedSettings)
   .settings(
     name := "kit-repo",
@@ -134,9 +136,9 @@ lazy val repo = project
 lazy val root = project
   .in(file("."))
   .aggregate(
-    common.js, common.jvm, common.native,
-    kit.js, kit.jvm, kit.native,
-    kitd.js, kitd.jvm, kitd.native,
+    /* common.js, */ common.jvm, common.native,
+    /* kit.js, */ kit.jvm, kit.native,
+    /* kitd.js, */ kitd.jvm, kitd.native,
     repo,
   )
   .settings(
