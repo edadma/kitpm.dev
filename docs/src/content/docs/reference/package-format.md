@@ -105,10 +105,10 @@ for each file:
   <mode: u16>                     # big-endian (e.g., 0755 = 0x01ED)
   <original-size: u32>            # big-endian, uncompressed size
   <compressed-size: u32>          # big-endian
-  <compressed-data: bytes>        # LZ4-style compressed
+  <compressed-data: bytes>        # kitlz compressed
 ```
 
-Each file's data is individually compressed using a built-in LZ4-style compressor — pure Scala, zero external dependencies. Typical compression ratios: 70%+ for text/scripts, 40-60% for binaries, near-zero expansion for incompressible data.
+Each file's data is individually compressed using Kit's built-in compressor (kitlz, an LZ77 variant with hash-table matching) — pure Scala, zero external dependencies. Typical compression ratios: 70%+ for text/scripts, 40-60% for binaries, near-zero expansion for incompressible data.
 
 The manifest is embedded in the package so each store entry is self-describing. `kit pack` creates `.kit` files; `kit unpack` extracts them.
 

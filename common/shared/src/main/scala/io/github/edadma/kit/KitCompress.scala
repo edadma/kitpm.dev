@@ -1,7 +1,7 @@
 package io.github.edadma.kit
 
 /**
- * Simple LZ4-style compression for Kit packages.
+ * kitlz — Kit's built-in compressor. An LZ77 variant with hash-table matching.
  * Pure Scala, zero dependencies. Operates on byte arrays.
  *
  * Format: sequence of blocks, each block is:

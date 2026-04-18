@@ -274,10 +274,10 @@ for each file:
   <mode: u16>                     # big-endian (e.g., 0755 = 0x01ED)
   <original-size: u32>            # big-endian, uncompressed size
   <compressed-size: u32>          # big-endian
-  <compressed-data: bytes>        # LZ4-style compressed
+  <compressed-data: bytes>        # kitlz compressed
 ```
 
-Each file's data is individually compressed using a built-in LZ4-style compressor — pure Scala, zero external dependencies. Typical compression ratios: 70%+ for text and scripts, 40-60% for compiled binaries, near-zero expansion for incompressible data. The compressor and decompressor are each ~120 lines.
+Each file's data is individually compressed using Kit's built-in compressor (kitlz, an LZ77 variant with hash-table matching) — pure Scala, zero external dependencies. Typical compression ratios: 70%+ for text and scripts, 40-60% for compiled binaries, near-zero expansion for incompressible data. The compressor and decompressor are each ~120 lines.
 
 The manifest is embedded in the package so each store entry is self-describing. The daemon cross-checks the embedded manifest against the repo manifest; they must match.
 
