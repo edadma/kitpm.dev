@@ -264,4 +264,115 @@ class DaemonTests extends AnyFreeSpec with Matchers with BeforeAndAfterEach {
     Files.exists(profile.resolve("current/bin/hello")) shouldBe true
     Files.exists(profile.resolve("current/bin/greet")) shouldBe true
   }
+
+  // --- .kit package format tests ---
+
+  private val helloManifestToml =
+    """name = "hello"
+      |version = "1.0.0"
+      |target = "x86_64-linux-gnu"
+      |content-hash = "sha256-hellohash123"
+      |scope = "user"
+      |
+      |[[tests]]
+      |name = "prints-hello"
+      |binary = "bin/hello-test"
+      |""".stripMargin
+
+  private val helloScript     = "#!/bin/sh\necho \"hello world\"\n"
+  private val helloTestScript = "#!/bin/sh\noutput=$(\"$(dirname \"$0\")/hello\")\ntest \"$output\" = \"hello world\"\n"
+
+  private def createHelloKitFile(): Path =
+    val pkg = PackageFormat.Package(
+      manifest = helloManifestToml,
+      files = List(
+        PackageFormat.FileEntry("bin/hello", 0x1ed, helloScript.getBytes("UTF-8")),
+        PackageFormat.FileEntry("bin/hello-test", 0x1ed, helloTestScript.getBytes("UTF-8")),
+        PackageFormat.FileEntry("manifest.toml", 0x1a4, helloManifestToml.getBytes("UTF-8")),
+      ),
+    )
+    val bytes = PackageFormat.writeBytes(pkg)
+    val kitFile = Files.createTempFile("hello-1.0.0-", ".kit")
+    Files.write(kitFile, bytes)
+    kitFile
+
+  "install from .kit package file" in {
+    val kitFile = createHelloKitFile()
+    val result = daemon.install(helloManifest, kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+
+    result.isRight shouldBe true
+    result.toOption.get shouldBe 1
+  }
+
+  "kit package extracts files correctly" in {
+    val kitFile = createHelloKitFile()
+    daemon.install(helloManifest, kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+
+    val storePath = daemon.store.pathFor(helloManifest.contentHash, "hello", "1.0.0")
+    Files.exists(storePath.resolve("bin/hello")) shouldBe true
+    Files.exists(storePath.resolve("bin/hello-test")) shouldBe true
+    Files.exists(storePath.resolve("manifest.toml")) shouldBe true
+  }
+
+  "kit package preserves file contents" in {
+    val kitFile = createHelloKitFile()
+    daemon.install(helloManifest, kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+
+    val storePath = daemon.store.pathFor(helloManifest.contentHash, "hello", "1.0.0")
+    val content = new String(Files.readAllBytes(storePath.resolve("bin/hello")))
+    content shouldBe helloScript
+  }
+
+  "kit package sets executable permission" in {
+    val kitFile = createHelloKitFile()
+    daemon.install(helloManifest, kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+
+    val storePath = daemon.store.pathFor(helloManifest.contentHash, "hello", "1.0.0")
+    storePath.resolve("bin/hello").toFile.canExecute shouldBe true
+  }
+
+  "installed hello script runs correctly" in {
+    val kitFile = createHelloKitFile()
+    daemon.install(helloManifest, kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+
+    val storePath = daemon.store.pathFor(helloManifest.contentHash, "hello", "1.0.0")
+    val hello = storePath.resolve("bin/hello").toString
+
+    val pb = new ProcessBuilder("sh", hello)
+    pb.redirectErrorStream(true)
+    val process = pb.start()
+    val output = new String(process.getInputStream.readAllBytes()).trim
+    val exitCode = process.waitFor()
+
+    exitCode shouldBe 0
+    output shouldBe "hello world"
+  }
+
+  "full lifecycle with .kit file" in {
+    val kitFile = createHelloKitFile()
+
+    // Install from .kit file
+    daemon.install(helloManifest, kitFile, system = false).isRight shouldBe true
+    Files.deleteIfExists(kitFile)
+
+    // Verify installed
+    daemon.list(system = false).map(_.name) shouldBe List("hello")
+
+    // Verify binary runs
+    val storePath = daemon.store.pathFor(helloManifest.contentHash, "hello", "1.0.0")
+    val pb = new ProcessBuilder("sh", storePath.resolve("bin/hello").toString)
+    pb.redirectErrorStream(true)
+    val output = new String(pb.start().getInputStream.readAllBytes()).trim
+    output shouldBe "hello world"
+
+    // Remove and GC
+    daemon.remove("hello", system = false).isRight shouldBe true
+    daemon.gc() should have size 1
+    daemon.store.listHashes() shouldBe empty
+  }
 }
