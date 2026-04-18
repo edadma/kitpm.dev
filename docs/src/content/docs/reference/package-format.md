@@ -90,31 +90,30 @@ requires-features = ["service-registration"]
 | `effects.*` | No | System integration effects. See [Effects](/concepts/effects/). |
 | `tests` | No | Self-tests. See [Package Testing](/concepts/testing/). |
 
-## Tarball layout
+## Package file format
+
+Kit uses its own binary package format (`.kit` files) rather than tarballs. The format is simple enough to implement in any language with zero external dependencies — critical for bootstrapping on Slix.
 
 ```
-<package>.tar.zst
-├── bin/
-├── sbin/
-├── lib/
-├── share/
-├── manifest.toml          # identical to the repo manifest
-└── .kit-provenance        # origin metadata; excluded from content hash
+KITPKG01                           # 8-byte magic + version
+<manifest-length: u32>             # big-endian
+<manifest TOML: UTF-8 bytes>
+<file-count: u32>                  # big-endian
+for each file:
+  <path-length: u16>              # big-endian
+  <path: UTF-8 bytes>             # relative, forward slashes
+  <mode: u16>                     # big-endian (e.g., 0755 = 0x01ED)
+  <data-length: u32>              # big-endian
+  <data: raw bytes>
 ```
 
-The manifest is duplicated inside the tarball so a store entry is self-describing. The daemon cross-checks the two copies.
+The manifest is embedded in the package so each store entry is self-describing. `kit pack` creates `.kit` files; `kit unpack` extracts them.
 
-## Content hash canonicalization
+## Content hash
 
-The content hash is computed over the tarball after canonicalization:
+The content hash is computed over the entire `.kit` file bytes (SHA-256).
 
-- Deterministic entry ordering (lexicographic by path)
-- Fixed mtime (epoch 0)
-- Fixed uid/gid (0/0)
-- Normalized permissions (0755/0644)
-- `.kit-provenance` excluded from hash computation
-
-Because `manifest.toml` is inside the tarball and contributes to the content hash, changes to effects, dependencies, or metadata produce a new content hash. An effect change is a new package, not a silent mutation.
+The `kit pack` command produces deterministic output — same directory contents always produce the same `.kit` file bytes. Files are ordered lexicographically by path. The manifest is embedded and contributes to the hash, so changes to effects, dependencies, or metadata produce a new content hash.
 
 ## Provenance
 

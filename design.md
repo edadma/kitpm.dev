@@ -920,6 +920,10 @@ kit test <name>                   # install into isolated root, run declared tes
 kit test --all                    # test every package in the repo
 kit test --report                 # show last test results for all packages
 
+# Packaging
+kit pack <directory> -o <file.kit>    # create a .kit package from a directory
+kit unpack <file.kit> -o <directory>  # extract a .kit package to a directory
+
 # Administration
 kit gc [--dry-run]
 kit pin <content-hash>

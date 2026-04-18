@@ -52,15 +52,17 @@ object PackageFormat:
     dos.writeInt(manifestBytes.length)
     dos.write(manifestBytes)
 
-    // Files
+    // Files (each file's data is LZ4-compressed)
     dos.writeInt(pkg.files.length)
     for f <- pkg.files do
       val pathBytes = f.path.getBytes(StandardCharsets.UTF_8)
       dos.writeShort(pathBytes.length)
       dos.write(pathBytes)
       dos.writeShort(f.mode)
-      dos.writeInt(f.data.length)
-      dos.write(f.data)
+      val compressed = KitCompress.compress(f.data)
+      dos.writeInt(f.data.length)      // original size (for decompression)
+      dos.writeInt(compressed.length)   // compressed size
+      dos.write(compressed)
 
     dos.flush()
 
@@ -109,11 +111,15 @@ object PackageFormat:
 
           val mode = dis.readUnsignedShort()
 
-          val dataLen = dis.readInt()
-          if dataLen < 0 || dataLen > 500 * 1024 * 1024 then
-            break(Left(s"invalid data length for '$path': $dataLen"))
-          val dataBuf = new Array[Byte](dataLen)
-          dis.readFully(dataBuf)
+          val originalSize = dis.readInt()
+          if originalSize < 0 || originalSize > 500 * 1024 * 1024 then
+            break(Left(s"invalid original size for '$path': $originalSize"))
+          val compressedSize = dis.readInt()
+          if compressedSize < 0 || compressedSize > 500 * 1024 * 1024 then
+            break(Left(s"invalid compressed size for '$path': $compressedSize"))
+          val compressedBuf = new Array[Byte](compressedSize)
+          dis.readFully(compressedBuf)
+          val dataBuf = KitCompress.decompress(compressedBuf, originalSize)
 
           files += FileEntry(path, mode, dataBuf)
 

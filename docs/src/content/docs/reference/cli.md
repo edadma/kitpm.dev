@@ -112,6 +112,21 @@ kit adapters list                    # installed adapters
 kit features                         # available platform features
 ```
 
+## Packaging
+
+```sh
+kit pack <directory> -o <file.kit>    # create a .kit package from a directory
+kit unpack <file.kit> -o <directory>  # extract a .kit package to a directory
+```
+
+### pack
+
+Creates a `.kit` package file from a directory. The directory must contain a `manifest.toml` at the root, plus the package's files (`bin/`, `lib/`, `share/`, etc.). The output is a binary file in Kit's own package format (KITPKG01) — not a tarball.
+
+### unpack
+
+Extracts a `.kit` package file to a directory, preserving file permissions. Useful for inspecting package contents or debugging.
+
 ## Administration
 
 ```sh
