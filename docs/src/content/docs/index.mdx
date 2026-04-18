@@ -3,29 +3,41 @@ title: Kit
 description: A portable POSIX package manager.
 template: splash
 hero:
-  tagline: A portable POSIX package manager
+  tagline: A portable POSIX package manager with real rollback, multi-version coexistence, and deterministic installs.
   actions:
     - text: Get Started
       link: /getting-started/introduction/
       icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/edadma/kitpm.dev
+      icon: external
+      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## What is Kit?
+## Why Kit?
 
-Kit is the native package manager for [Slix](https://github.com/edadma/slix) and works on any POSIX system — Linux, macOS, and BSD.
-
-It uses a content-addressed store, supports generational rollback, and keeps package effects declarative and predictable.
+Kit takes the structurally important ideas from Nix — content-addressed immutable store, generations, atomic switches, closure-based GC — and omits the complexity that makes them hard to learn and teach.
 
 <CardGrid>
 	<Card title="Portable" icon="laptop">
-		Runs anywhere POSIX does — Linux, macOS, FreeBSD, and more.
+		Runs on any POSIX system: Linux, macOS, FreeBSD, and Slix. Platform differences are handled by small, swappable adapters.
 	</Card>
 	<Card title="Reproducible" icon="approve-check">
-		Content-addressed store and generations make builds reproducible and rollbacks trivial.
+		Content-addressed store with exact dependency pinning. No version ranges, no constraint solving. Every install is deterministic.
 	</Card>
 	<Card title="Predictable" icon="setting">
-		A closed effect schema means packages declare exactly what they do — no surprises.
+		A closed effect schema means packages declare exactly what they do to the system. No arbitrary shell scripts, no hidden side effects.
+	</Card>
+	<Card title="Reversible" icon="reverse">
+		Every operation produces a new generation. Rollback is an atomic pointer flip plus a journaled activation diff. It always works.
 	</Card>
 </CardGrid>
+
+## Two roles, one tool
+
+- **On Slix:** the native system package manager. Owns system integration — users, services, capabilities.
+- **On Linux / macOS / BSD:** a portable personal-prefix package manager. Real rollback, hermetic installs, multi-version coexistence for your own software.
+
+The same knowledge transfers between platforms.
