@@ -24,9 +24,27 @@ kitd --root=/
 
 ## Configure a repository
 
+Edit `~/.kit/etc/kit/repos.toml`:
+
+```toml
+[[repo]]
+url = "https://repo.kitpm.dev/stable"
+trusted-keys = ["ed25519:..."]
+priority = 10
+targets = ["x86_64-linux-gnu"]
+```
+
+Then fetch the index:
+
 ```sh
-kit repo add https://repo.kitpm.dev/stable --key /path/to/trusted-key.pub
-kit repo update
+kit update
+```
+
+## Search for packages
+
+```sh
+kit search hello
+# hello  1.0.0  user  A simple hello world package
 ```
 
 ## Install a package

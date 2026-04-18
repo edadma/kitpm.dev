@@ -24,6 +24,7 @@ export default defineConfig({
 						{ label: 'Profiles & Generations', slug: 'concepts/profiles' },
 						{ label: 'Effects', slug: 'concepts/effects' },
 						{ label: 'Adapters', slug: 'concepts/adapters' },
+						{ label: 'Repositories', slug: 'concepts/repositories' },
 						{ label: 'Package Testing', slug: 'concepts/testing' },
 					],
 				},
