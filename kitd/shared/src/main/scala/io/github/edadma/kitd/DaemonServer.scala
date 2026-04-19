@@ -68,16 +68,19 @@ class DaemonServer(daemon: Daemon):
             envelope.payload.fromJson[InstallRequest] match
               case Left(err) => ErrorResponse(s"invalid install request: $err")
               case Right(req) =>
-                // Install from a local .kit file path
-                // The CLI sends the file path in the name field for local installs
+                // Check if name is a local .kit file path
                 val kitFile = java.nio.file.Paths.get(req.name)
-                if java.nio.file.Files.exists(kitFile) then
+                if req.name.endsWith(".kit") && java.nio.file.Files.exists(kitFile) then
                   daemon.installFromFile(kitFile, req.system) match
                     case Right((manifest, gen)) =>
                       SuccessResponse(InstalledData(manifest.name, manifest.version, manifest.contentHash.toString, gen))
                     case Left(err) => ErrorResponse(err)
                 else
-                  ErrorResponse(s"package file not found: ${req.name}")
+                  // Install by name from repos
+                  daemon.installByName(req.name, req.version, req.system) match
+                    case Right((manifest, gen)) =>
+                      SuccessResponse(InstalledData(manifest.name, manifest.version, manifest.contentHash.toString, gen))
+                    case Left(err) => ErrorResponse(err)
 
           case "rollback" =>
             envelope.payload.fromJson[RollbackRequest] match
@@ -102,6 +105,11 @@ class DaemonServer(daemon: Daemon):
                 val pkgs = daemon.list(req.system)
                 val entries = pkgs.map(p => PackageListEntry(p.name, p.version, p.contentHash.toString))
                 SuccessResponse(PackageListData(entries))
+
+          case "update" =>
+            daemon.update() match
+              case Right(count) => SuccessResponse(PongData(daemon.root, s"$count repo(s) updated"))
+              case Left(err)    => ErrorResponse(err)
 
           case "gc" =>
             envelope.payload.fromJson[GCRequest] match

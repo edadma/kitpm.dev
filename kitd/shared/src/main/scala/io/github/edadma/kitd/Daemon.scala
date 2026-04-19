@@ -52,6 +52,93 @@ class Daemon(val root: String):
 
   // --- Install from .kit file ---
 
+  /** Cached repo indexes: (RepoIndex, repoUrl) */
+  var cachedRepos: List[(RepoIndex, String)] = Nil
+
+  /** Update indexes from all configured repos. */
+  def update(): Either[String, Int] =
+    val reposConfig = Paths.get(s"$prefix/etc/kit/repos.toml")
+    if !Files.exists(reposConfig) then return Left("no repos configured (etc/kit/repos.toml missing)")
+
+    val toml = new String(Files.readAllBytes(reposConfig))
+    TrustConfigParser.parse(toml) match
+      case Left(err) => Left(s"invalid repos.toml: $err")
+      case Right(tc) =>
+        val repos = List.newBuilder[(RepoIndex, String)]
+        var errors = List.empty[String]
+
+        for repo <- tc.repos do
+          RepoClient.fetchIndex(repo.url) match
+            case Left(err) =>
+              errors = s"${repo.url}: $err" :: errors
+            case Right(indexToml) =>
+              RepoIndexParser.parse(indexToml) match
+                case Left(err) =>
+                  errors = s"${repo.url}: invalid index: $err" :: errors
+                case Right(index) =>
+                  // Cache the index
+                  val cachePath = Paths.get(s"$prefix/kit/var/cache/${index.repoName}-index.toml")
+                  Files.createDirectories(cachePath.getParent)
+                  Files.writeString(cachePath, indexToml)
+                  repos += ((index, repo.url))
+
+        cachedRepos = repos.result()
+        if cachedRepos.isEmpty && errors.nonEmpty then
+          Left(s"failed to fetch any indexes: ${errors.mkString("; ")}")
+        else
+          Right(cachedRepos.length)
+
+  /** Install a package by name from repos. */
+  def installByName(name: String, version: Option[String], system: Boolean): Either[String, (Manifest, Int)] =
+    if cachedRepos.isEmpty then
+      // Try to load cached indexes
+      loadCachedIndexes()
+
+    if cachedRepos.isEmpty then return Left("no repo indexes available. Run 'kit update' first.")
+
+    val target = System.getProperty("os.arch") match
+      case "aarch64" => "aarch64-linux-gnu"
+      case _         => "x86_64-linux-gnu"
+
+    val reposWithNames = cachedRepos.map((idx, url) => (idx, url))
+
+    // Find the package in the index
+    val entry = version match
+      case Some(v) =>
+        reposWithNames.flatMap((idx, _) => idx.packages.find(p => p.name == name && p.version == v)).headOption
+      case None =>
+        Search.findLatest(cachedRepos.map((idx, url) => (idx, idx.repoName)), name, target).map(_.entry)
+
+    entry match
+      case None => Left(s"package '$name' not found in any repo")
+      case Some(pkg) =>
+        // Find which repo has this package
+        val repoUrl = cachedRepos.collectFirst {
+          case (idx, url) if idx.packages.exists(_.contentHash == pkg.contentHash) => url
+        }.getOrElse(return Left("internal error: package found in index but repo URL lost"))
+
+        // Fetch the blob
+        RepoClient.fetchBlob(repoUrl, pkg.contentHash) match
+          case Left(err) => Left(s"failed to fetch ${pkg.name}: $err")
+          case Right(blobPath) =>
+            try installFromFile(blobPath, system)
+            finally Files.deleteIfExists(blobPath)
+
+  private def loadCachedIndexes(): Unit =
+    val cacheDir = Paths.get(s"$prefix/kit/var/cache")
+    if Files.exists(cacheDir) then
+      val repos = List.newBuilder[(RepoIndex, String)]
+      val stream = Files.list(cacheDir)
+      try stream.forEach { path =>
+        if path.toString.endsWith("-index.toml") then
+          val toml = new String(Files.readAllBytes(path))
+          RepoIndexParser.parse(toml).foreach { idx =>
+            repos += ((idx, "")) // URL not known from cache
+          }
+      }
+      finally stream.close()
+      cachedRepos = repos.result()
+
   /**
    * Install a package from a .kit file. Reads the manifest from the package,
    * extracts to store, builds generation, runs activation.

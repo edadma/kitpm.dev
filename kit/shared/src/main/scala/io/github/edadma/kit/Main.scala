@@ -12,6 +12,7 @@ case class RollbackCmd(toGeneration: Option[Int] = None, system: Boolean = false
 case class GenerationsCmd(system: Boolean = false)                                              extends KitCommand
 case class GCCmd(dryRun: Boolean = false)                                                       extends KitCommand
 case object PingCmd                                                                             extends KitCommand
+case object UpdateCmd                                                                           extends KitCommand
 case class PackCmd(directory: String = "", output: String = "")                                  extends KitCommand
 case class UnpackCmd(kitFile: String = "", output: String = "")                                  extends KitCommand
 case class InspectCmd(kitFile: String = "")                                                      extends KitCommand
@@ -96,6 +97,10 @@ object Main:
         .action((_, c) => c.copy(command = PingCmd))
         .text("check if daemon is running"),
 
+      cmd("update")
+        .action((_, c) => c.copy(command = UpdateCmd))
+        .text("fetch latest package indexes from repos"),
+
       cmd("pack")
         .action((_, c) => c.copy(command = PackCmd()))
         .text("create a .kit package from a directory")
@@ -157,6 +162,7 @@ object Main:
       case GenerationsCmd(system)               => GenerationsRequest(system, None)
       case GCCmd(dryRun)                        => GCRequest(dryRun)
       case PingCmd                              => Protocol.PingRequest
+      case UpdateCmd                            => Protocol.UpdateRequest
       case _                                    => Protocol.PingRequest
 
     DaemonClient.send(socketPath, request) match

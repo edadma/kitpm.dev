@@ -54,6 +54,9 @@ object Protocol:
   case object PingRequest extends Request:
     val op = "ping"
 
+  case object UpdateRequest extends Request:
+    val op = "update"
+
   // --- Responses ---
 
   sealed trait Response:

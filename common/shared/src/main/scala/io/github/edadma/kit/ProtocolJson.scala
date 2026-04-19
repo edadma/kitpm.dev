@@ -44,6 +44,7 @@ object ProtocolJson:
       case r: Protocol.TestRequest        => s"""{"op":"test","payload":"${esc(r.toJson)}"}"""
       case r: Protocol.GenerationsRequest => s"""{"op":"generations","payload":"${esc(r.toJson)}"}"""
       case Protocol.PingRequest           => """{"op":"ping","payload":"{}"}"""
+      case Protocol.UpdateRequest         => """{"op":"update","payload":"{}"}"""
 
   // --- Response codecs ---
 
