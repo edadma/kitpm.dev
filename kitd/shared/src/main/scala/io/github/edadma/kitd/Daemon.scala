@@ -6,13 +6,17 @@ import java.nio.file.{Files, Path, Paths}
 
 /**
  * The kitd daemon core. Coordinates store, profiles, activation, and GC.
- * This class contains no socket/IPC logic — it's the engine that request handlers call into.
  */
 class Daemon(val root: String):
   private val prefix = if root.endsWith("/") then root.dropRight(1) else root
 
-  val store          = new Store(root)
-  val profiles       = new ProfileManager(root)
+  val store    = new Store(root)
+  val profiles = new ProfileManager(root)
+
+  /** Adapter config: feature name → adapter executable path. */
+  var adapters: Map[String, String] = Map.empty
+
+  private lazy val activation = new ActivationEngine(root, adapters)
 
   /** Initialize the directory structure. */
   def init(): Unit =
@@ -24,16 +28,46 @@ class Daemon(val root: String):
     Files.createDirectories(Paths.get(s"$prefix/kit/var/state"))
     Files.createDirectories(Paths.get(s"$prefix/etc/kit"))
 
-  // --- Install ---
+  /** Load adapter configuration from <root>/etc/kit/adapters.toml */
+  def loadAdapters(): Unit =
+    val configPath = Paths.get(s"$prefix/etc/kit/adapters.toml")
+    if Files.exists(configPath) then
+      val toml = new String(Files.readAllBytes(configPath))
+      FeatureCheck.availableFrom(toml) match
+        case Right(features) =>
+          // Map feature names to adapter paths from the TOML
+          import io.github.edadma.toml.{TomlParser, TomlValue}
+          TomlParser.parse(toml) match
+            case Right(doc) =>
+              val map = scala.collection.mutable.Map.empty[String, String]
+              if doc.getString("user-database.adapter").isDefined then
+                map("user-database") = s"$prefix/kit/adapters/kit-adapter-userdb-${doc.getString("user-database.adapter").get}"
+              if doc.getString("init.adapter").isDefined then
+                map("service-registration") = s"$prefix/kit/adapters/kit-adapter-init-${doc.getString("init.adapter").get}"
+              if doc.getString("capabilities.adapter").isDefined then
+                map("capabilities") = s"$prefix/kit/adapters/kit-adapter-caps-${doc.getString("capabilities.adapter").get}"
+              adapters = map.toMap
+            case Left(_) => ()
+        case Left(_) => ()
+
+  // --- Install from .kit file ---
 
   /**
-   * Install a package into a profile.
-   *
-   * @param manifest the package manifest
-   * @param blobPath path to the tarball (already fetched and verified)
-   * @param system   install to system profile
-   * @return the new generation number
+   * Install a package from a .kit file. Reads the manifest from the package,
+   * extracts to store, builds generation, runs activation.
    */
+  def installFromFile(kitFile: Path, system: Boolean): Either[String, (Manifest, Int)] =
+    val bytes = Files.readAllBytes(kitFile)
+    PackageFormat.readBytes(bytes) match
+      case Left(err) => Left(s"invalid package: $err")
+      case Right(pkg) =>
+        ManifestParser.parse(pkg.manifest) match
+          case Left(err) => Left(s"invalid manifest: $err")
+          case Right(manifest) =>
+            install(manifest, kitFile, system).map(gen => (manifest, gen))
+
+  // --- Install ---
+
   def install(manifest: Manifest, blobPath: Path, system: Boolean): Either[String, Int] =
     val profile = profiles.profileDir(system)
     val genNum = profiles.nextGeneration(profile)
@@ -43,25 +77,29 @@ class Daemon(val root: String):
     if !store.contains(manifest.contentHash) then
       extractToStore(blobPath, storePath)
 
-    // Read current generation's packages (if any)
+    // Read current generation's packages
     val currentPkgs = readCurrentPackages(profile)
 
-    // Check for duplicate
     if currentPkgs.exists(_.name == manifest.name) then
       return Left(s"package '${manifest.name}' is already installed")
 
+    // Compute effect diff and run activation
+    val oldEffects = Effects.empty // TODO: merge effects from current packages' manifests
+    val newEffects = manifest.effects
+    if !newEffects.isEmpty then
+      val diff = EffectOps.diff(oldEffects, newEffects)
+      activation.apply(diff) match
+        case Left(err) => return Left(s"activation failed: $err")
+        case Right(_)  => ()
+
     // Build new generation
     val newPkgs = currentPkgs :+ GenerationPackageEntry(
-      manifest.name,
-      manifest.version,
-      manifest.contentHash,
-      manifest.scope,
+      manifest.name, manifest.version, manifest.contentHash, manifest.scope,
     )
     val genDir = profiles.createGeneration(profile, genNum)
     writeGenerationManifest(genDir, genNum, profileName(system), newPkgs)
     buildSymlinks(genDir, newPkgs)
 
-    // Switch current
     profiles.switchCurrent(profile, genNum)
     Right(genNum)
 
@@ -110,14 +148,9 @@ class Daemon(val root: String):
 
   def gc(): Set[ContentHash] =
     val allHashes = store.listHashes()
-    // Collect reachable hashes from all profiles' current generations
     val reachable = collectReachableHashes()
     val garbage = GCReachability.garbage(allHashes, reachable)
-
-    // Delete garbage
-    for hash <- garbage do
-      deleteStoreEntry(hash)
-
+    for hash <- garbage do deleteStoreEntry(hash)
     garbage
 
   // --- Helpers ---
@@ -138,21 +171,14 @@ class Daemon(val root: String):
           case Left(_)   => Nil
 
   private def writeGenerationManifest(
-      genDir: Path,
-      genNum: Int,
-      profile: String,
-      packages: List[GenerationPackageEntry],
+      genDir: Path, genNum: Int, profile: String, packages: List[GenerationPackageEntry],
   ): Unit =
     val gm = GenerationManifest(genNum, profile, packages, Effects.empty)
-    val toml = GenerationManifestBuilder.toToml(gm)
-    Files.write(genDir.resolve("manifest.toml"), toml.getBytes)
+    Files.write(genDir.resolve("manifest.toml"), GenerationManifestBuilder.toToml(gm).getBytes)
 
   private def buildSymlinks(genDir: Path, packages: List[GenerationPackageEntry]): Unit =
-    // Create bin/, lib/, sbin/, share/ directories
     for dir <- List("bin", "sbin", "lib", "share") do
       Files.createDirectories(genDir.resolve(dir))
-
-    // For each package, symlink exposed files from the store
     for pkg <- packages do
       val storeEntry = store.pathFor(pkg.contentHash, pkg.name, pkg.version)
       if Files.exists(storeEntry) then
@@ -160,21 +186,17 @@ class Daemon(val root: String):
           val srcDir = storeEntry.resolve(dir)
           if Files.exists(srcDir) then
             val stream = Files.list(srcDir)
-            try
-              stream.forEach { file =>
-                val target = genDir.resolve(dir).resolve(file.getFileName)
-                if !Files.exists(target) then
-                  Files.createSymbolicLink(target, file)
-              }
+            try stream.forEach { file =>
+              val target = genDir.resolve(dir).resolve(file.getFileName)
+              if !Files.exists(target) then Files.createSymbolicLink(target, file)
+            }
             finally stream.close()
 
   private def extractToStore(blobPath: Path, storePath: Path): Unit =
     Files.createDirectories(storePath)
     if Files.isDirectory(blobPath) then
-      // Directory mode: copy tree (used by tests with pre-extracted fixtures)
       copyDirectory(blobPath, storePath)
     else
-      // Kit package format: read and extract files
       val bytes = Files.readAllBytes(blobPath)
       PackageFormat.readBytes(bytes) match
         case Left(err) => throw new RuntimeException(s"Failed to read package $blobPath: $err")
@@ -183,26 +205,22 @@ class Daemon(val root: String):
             val dest = storePath.resolve(f.path)
             Files.createDirectories(dest.getParent)
             Files.write(dest, f.data)
-            if (f.mode & 0x49) != 0 then // any execute bit set
-              dest.toFile.setExecutable(true)
+            if (f.mode & 0x49) != 0 then dest.toFile.setExecutable(true)
 
   private def copyDirectory(src: Path, dst: Path): Unit =
     val stream = Files.walk(src)
-    try
-      stream.forEach { source =>
-        val dest = dst.resolve(src.relativize(source))
-        if Files.isDirectory(source) then Files.createDirectories(dest)
-        else
-          Files.createDirectories(dest.getParent)
-          Files.copy(source, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-      }
+    try stream.forEach { source =>
+      val dest = dst.resolve(src.relativize(source))
+      if Files.isDirectory(source) then Files.createDirectories(dest)
+      else
+        Files.createDirectories(dest.getParent)
+        Files.copy(source, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
     finally stream.close()
 
   private def collectReachableHashes(): Set[ContentHash] =
     val systemPkgs = readCurrentPackages(profiles.profileDir(true))
-    val userPkgs = listUserProfiles().flatMap { userDir =>
-      readCurrentPackages(userDir)
-    }
+    val userPkgs = listUserProfiles().flatMap(readCurrentPackages)
     (systemPkgs ++ userPkgs).map(_.contentHash).toSet
 
   private def listUserProfiles(): List[Path] =
@@ -210,14 +228,7 @@ class Daemon(val root: String):
     if !Files.exists(usersDir) then Nil
     else
       val stream = Files.list(usersDir)
-      try
-        stream
-          .iterator()
-          .nn
-          .asInstanceOf[java.util.Iterator[Path]]
-          .asScala
-          .filter(Files.isDirectory(_))
-          .toList
+      try stream.iterator().nn.asInstanceOf[java.util.Iterator[Path]].asScala.filter(Files.isDirectory(_)).toList
       finally stream.close()
 
   private implicit class IteratorOps[A](it: java.util.Iterator[A]):
@@ -226,13 +237,10 @@ class Daemon(val root: String):
       def next(): A = it.next()
 
   private def deleteStoreEntry(hash: ContentHash): Unit =
-    // Find the directory matching this hash
     val stream = Files.list(store.storeDir)
-    try
-      stream.forEach { entry =>
-        if entry.getFileName.toString.startsWith(hash.toString) then
-          deleteRecursive(entry)
-      }
+    try stream.forEach { entry =>
+      if entry.getFileName.toString.startsWith(hash.toString) then deleteRecursive(entry)
+    }
     finally stream.close()
 
   private def deleteRecursive(path: Path): Unit =

@@ -64,6 +64,29 @@ class DaemonServer(daemon: Daemon):
           case "ping" =>
             SuccessResponse(PongData(daemon.root, "0.0.1"))
 
+          case "install" =>
+            envelope.payload.fromJson[InstallRequest] match
+              case Left(err) => ErrorResponse(s"invalid install request: $err")
+              case Right(req) =>
+                // Install from a local .kit file path
+                // The CLI sends the file path in the name field for local installs
+                val kitFile = java.nio.file.Paths.get(req.name)
+                if java.nio.file.Files.exists(kitFile) then
+                  daemon.installFromFile(kitFile, req.system) match
+                    case Right((manifest, gen)) =>
+                      SuccessResponse(InstalledData(manifest.name, manifest.version, manifest.contentHash.toString, gen))
+                    case Left(err) => ErrorResponse(err)
+                else
+                  ErrorResponse(s"package file not found: ${req.name}")
+
+          case "rollback" =>
+            envelope.payload.fromJson[RollbackRequest] match
+              case Left(err) => ErrorResponse(s"invalid rollback request: $err")
+              case Right(req) =>
+                daemon.rollback(req.system, req.toGeneration) match
+                  case Right(gen) => SuccessResponse(RollbackData(0, gen))
+                  case Left(err)  => ErrorResponse(err)
+
           case "remove" =>
             envelope.payload.fromJson[RemoveRequest] match
               case Left(err) => ErrorResponse(s"invalid remove request: $err")
