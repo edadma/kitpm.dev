@@ -552,4 +552,35 @@ class DaemonTests extends AnyFreeSpec with Matchers with BeforeAndAfterEach {
     daemon.gc() should have size 1
     daemon.store.listHashes() shouldBe empty
   }
+
+  // --- Repo error handling ---
+
+  "update with no repos.toml returns error" in {
+    daemon.update() shouldBe Left("no repos configured (etc/kit/repos.toml missing)")
+  }
+
+  "installByName with no indexes returns error" in {
+    daemon.installByName("hello", None, system = false).isLeft shouldBe true
+    daemon.installByName("hello", None, system = false).left.toOption.get should include("no repo indexes")
+  }
+
+  "installFromFile with invalid .kit file returns error" in {
+    val badFile = Files.createTempFile("bad-", ".kit")
+    Files.writeString(badFile, "not a kit package")
+    val result = daemon.installFromFile(badFile, system = false)
+    Files.deleteIfExists(badFile)
+    result.isLeft shouldBe true
+    result.left.toOption.get should include("invalid package")
+  }
+
+  "installFromFile reads manifest from package" in {
+    val kitFile = createHelloKitFile()
+    val result = daemon.installFromFile(kitFile, system = false)
+    Files.deleteIfExists(kitFile)
+    result.isRight shouldBe true
+    val (manifest, gen) = result.toOption.get
+    manifest.name shouldBe "hello"
+    manifest.version shouldBe "1.0.0"
+    gen shouldBe 1
+  }
 }

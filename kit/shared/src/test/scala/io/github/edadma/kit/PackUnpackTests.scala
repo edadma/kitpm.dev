@@ -169,4 +169,44 @@ class PackUnpackTests extends AnyFreeSpec with Matchers with BeforeAndAfterEach 
     val hash2 = ContentHasher.sha256(Files.readAllBytes(kitFile2))
     hash1 shouldBe hash2
   }
+
+  // --- Inspect ---
+
+  private def captureOutput(block: => Unit): String =
+    val baos = new java.io.ByteArrayOutputStream()
+    Console.withOut(baos)(block)
+    baos.toString
+
+  "inspect shows package info" in {
+    val srcDir = createSrcDir()
+    val kitFile = tmpDir.resolve("hello.kit")
+    Main.doPack(srcDir.toString, kitFile.toString)
+
+    val output = captureOutput(Main.doInspect(kitFile.toString))
+    output should include("hello")
+    output should include("1.0.0")
+    output should include("sha256-")
+    output should include("bin/hello")
+    output should include("manifest.toml")
+  }
+
+  "inspect shows file count" in {
+    val srcDir = createSrcDir()
+    val kitFile = tmpDir.resolve("hello.kit")
+    Main.doPack(srcDir.toString, kitFile.toString)
+
+    val output = captureOutput(Main.doInspect(kitFile.toString))
+    output should include("Files: 2")
+  }
+
+  "inspect shows executable flag" in {
+    val srcDir = createSrcDir()
+    val kitFile = tmpDir.resolve("hello.kit")
+    Main.doPack(srcDir.toString, kitFile.toString)
+
+    val output = captureOutput(Main.doInspect(kitFile.toString))
+    val lines = output.split("\n")
+    val helloLine = lines.find(_.contains("bin/hello")).get
+    helloLine should startWith("  x")
+  }
 }
