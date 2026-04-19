@@ -16,6 +16,7 @@ case object UpdateCmd                                                           
 case class PackCmd(directory: String = "", output: String = "")                                  extends KitCommand
 case class UnpackCmd(kitFile: String = "", output: String = "")                                  extends KitCommand
 case class InspectCmd(kitFile: String = "")                                                      extends KitCommand
+case class AddCmd(kitFile: String = "", repo: String = "", token: String = "")                   extends KitCommand
 
 case class KitConfig(
     socket: String = "",
@@ -130,6 +131,22 @@ object Main:
           arg[String]("<file>")
             .action((v, c) => c.copy(command = c.command.asInstanceOf[InspectCmd].copy(kitFile = v))),
         ),
+
+      cmd("add")
+        .action((_, c) => c.copy(command = AddCmd()))
+        .text("upload a .kit package to a repository (admin)")
+        .children(
+          arg[String]("<file>")
+            .action((v, c) => c.copy(command = c.command.asInstanceOf[AddCmd].copy(kitFile = v))),
+          opt[String]("repo")
+            .required()
+            .valueName("<url>")
+            .action((v, c) => c.copy(command = c.command.asInstanceOf[AddCmd].copy(repo = v))),
+          opt[String]("token")
+            .valueName("<token>")
+            .action((v, c) => c.copy(command = c.command.asInstanceOf[AddCmd].copy(token = v)))
+            .text("auth token (or set KIT_REPO_TOKEN env var)"),
+        ),
     )
 
   def main(args: Array[String]): Unit =
@@ -137,10 +154,11 @@ object Main:
       case None => sys.exit(1)
       case Some(config) =>
         config.command match
-          case PackCmd(dir, out)    => doPack(dir, out)
-          case UnpackCmd(file, out) => doUnpack(file, out)
-          case InspectCmd(file)     => doInspect(file)
-          case cmd                  => doRemoteCommand(config.socket, cmd)
+          case PackCmd(dir, out)          => doPack(dir, out)
+          case UnpackCmd(file, out)       => doUnpack(file, out)
+          case InspectCmd(file)           => doInspect(file)
+          case AddCmd(file, repo, token)  => doAdd(file, repo, token)
+          case cmd                        => doRemoteCommand(config.socket, cmd)
 
   private def resolveSocket(socket: String): String =
     if socket.nonEmpty then socket
@@ -275,6 +293,25 @@ object Main:
           val mode = if (f.mode & 0x49) != 0 then "x" else " "
           val size = f.data.length
           println(f"  $mode ${size}%8d  ${f.path}")
+
+  private[kit] def doAdd(kitFile: String, repoUrl: String, token: String): Unit =
+    import java.nio.file.{Files, Paths}
+    val path = Paths.get(kitFile)
+    if !Files.exists(path) then
+      System.err.println(s"Error: file not found: $kitFile")
+      sys.exit(1)
+
+    // Use token from arg, env var, or empty
+    val authToken = if token.nonEmpty then token
+      else sys.env.getOrElse("KIT_REPO_TOKEN", "")
+
+    println(s"Uploading $kitFile to $repoUrl ...")
+    RepoClient.uploadPackage(repoUrl, path, authToken) match
+      case Left(e) =>
+        System.err.println(s"Error: $e")
+        sys.exit(1)
+      case Right(resp) =>
+        println(s"Uploaded: $resp")
 
   private def formatSize(bytes: Long): String =
     if bytes < 1024 then s"$bytes B"

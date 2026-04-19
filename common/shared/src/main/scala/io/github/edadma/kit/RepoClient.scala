@@ -1,6 +1,4 @@
-package io.github.edadma.kitd
-
-import io.github.edadma.kit.*
+package io.github.edadma.kit
 
 import java.io.{ByteArrayOutputStream, InputStream}
 import java.net.{HttpURLConnection, URI}
