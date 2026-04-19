@@ -7,19 +7,19 @@ A repository is a signed collection of packages served over HTTP. Users fetch pa
 
 ## Architecture
 
-Each repository is a small HTTP server that stores package tarballs, manifests, and a signed index. It exposes two surfaces:
+Each repository is a small HTTP server that stores `.kit` packages, manifests, and a signed index. It exposes two surfaces:
 
 **Public (everyone):**
 - `GET /index.toml` — the signed package listing
 - `GET /manifests/<hash>.toml` — per-package manifests
-- `GET /blobs/<hash>.tar.zst` — package tarballs
+- `GET /blobs/<hash>.kit` — package files
 
 **Admin (authenticated):**
-- `POST /add` — upload a package tarball
+- `POST /add` — upload a `.kit` package
 - `POST /sign` — regenerate and re-sign the index
 - `GET /verify` — check that all blobs match their declared hashes
 
-Admin operations require a bearer token. The server handles canonicalization, hashing, and index management — admins don't need to hold a full copy of the repository locally.
+Admin operations require a bearer token. The server handles hashing and index management — admins don't need to hold a full copy of the repository locally.
 
 ## Index
 
@@ -114,9 +114,9 @@ If you don't trust a repository's signing key, you don't configure it. There's n
 
 The typical workflow for a package maintainer:
 
-1. Build the package (or receive a pre-built tarball from CI).
-2. Run `kit add package.tar.zst` — this uploads the tarball to the repo server.
-3. The server canonicalizes the tarball, computes the content hash, extracts the manifest, stores both, and updates the index.
+1. Build the package (or receive a pre-built `.kit` file from CI).
+2. Run `kit add hello-1.0.0.kit` — this uploads the package to the repo server.
+3. The server computes the content hash, extracts the manifest, stores both, and updates the index.
 4. Run `kit sign` — the server re-signs the index with its signing key.
 5. Users run `kit update` to see the new package.
 

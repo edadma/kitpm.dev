@@ -57,14 +57,14 @@ Searches across all locally-cached indexes, filtered by the current platform's t
 These require authentication to the repository server (bearer token). Configure the token in `repos.toml` or via the `KIT_REPO_TOKEN` environment variable.
 
 ```sh
-kit add <tarball>                 # upload package to repo server
+kit add <file.kit>                # upload package to repo server
 kit sign                          # tell repo server to re-sign its index
 kit verify                        # check repo integrity (all blobs match hashes)
 ```
 
 #### add
 
-Uploads a package tarball to the repository server. The server canonicalizes it, computes the content hash, extracts the manifest, stores both, and updates the index. The admin doesn't need a local copy of the repository.
+Uploads a `.kit` package to the repository server. The server computes the content hash, extracts the manifest, stores both, and updates the index. The admin doesn't need a local copy of the repository.
 
 #### sign
 

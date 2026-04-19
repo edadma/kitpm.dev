@@ -3,7 +3,7 @@ title: Package Format
 description: The structure of a Kit package.
 ---
 
-A Kit package is a compressed tarball (`.tar.zst`) paired with a TOML manifest.
+A Kit package is a `.kit` file — a binary container with an embedded manifest and kitlz-compressed file data. Zero external dependencies.
 
 ## Manifest
 

@@ -15,7 +15,7 @@ The store is the heart of Kit. It's a flat directory of every package version ev
 
 ## Content addressing
 
-Each store path is identified by the SHA-256 hash of the package's canonicalized tarball contents. The `name-version` suffix is human affordance only — the hash is the sole identity. No code parses the name or version out of a store path.
+Each store path is identified by the SHA-256 hash of the `.kit` package file contents. The `name-version` suffix is human affordance only — the hash is the sole identity. No code parses the name or version out of a store path.
 
 Two packages with identical contents always produce the same hash, regardless of where they came from. Two packages with different contents — even a single byte difference — produce different hashes.
 
