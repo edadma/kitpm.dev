@@ -14,11 +14,12 @@ RUN curl -fL "https://github.com/sbt/sbt/releases/download/v1.12.9/sbt-1.12.9.tg
 WORKDIR /kit
 COPY . .
 
-# Pre-fetch dependencies
-RUN sbt "commonJVM/compile" "kitdJVM/compile" "kitJVM/compile"
-
 # Make adapters executable
 RUN chmod +x adapters/*
 
-# Default: run tier 2 tests
-CMD ["sbt", "kitdJVM/testOnly io.github.edadma.kitd.Tier2Tests"]
+# Pre-fetch dependencies and compile
+RUN sbt "commonJVM/compile" "kitdJVM/compile" "kitJVM/compile"
+
+# Run all tests (tier 0 + 1 + 2)
+# Tier 2 tests auto-detect Linux + root and execute; on macOS they cancel
+CMD ["sbt", "commonJVM/test", "kitdJVM/test", "kitJVM/test"]

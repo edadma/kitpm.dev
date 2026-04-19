@@ -1,0 +1,9 @@
+target/
+*/target/
+*/*/target/
+.git/
+docs/node_modules/
+docs/dist/
+.idea/
+.bsp/
+.metals/
