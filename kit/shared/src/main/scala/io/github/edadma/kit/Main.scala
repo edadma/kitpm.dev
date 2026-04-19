@@ -17,6 +17,7 @@ case class PackCmd(directory: String = "", output: String = "")                 
 case class UnpackCmd(kitFile: String = "", output: String = "")                                  extends KitCommand
 case class InspectCmd(kitFile: String = "")                                                      extends KitCommand
 case class AddCmd(kitFile: String = "", repo: String = "", token: String = "")                   extends KitCommand
+case class BuildCmd(recipe: String = "")                                                        extends KitCommand
 
 case class KitConfig(
     socket: String = "",
@@ -147,6 +148,14 @@ object Main:
             .action((v, c) => c.copy(command = c.command.asInstanceOf[AddCmd].copy(token = v)))
             .text("auth token (or set KIT_REPO_TOKEN env var)"),
         ),
+
+      cmd("build")
+        .action((_, c) => c.copy(command = BuildCmd()))
+        .text("build a package from a recipe")
+        .children(
+          arg[String]("<recipe>")
+            .action((v, c) => c.copy(command = c.command.asInstanceOf[BuildCmd].copy(recipe = v))),
+        ),
     )
 
   def main(args: Array[String]): Unit =
@@ -158,6 +167,7 @@ object Main:
           case UnpackCmd(file, out)       => doUnpack(file, out)
           case InspectCmd(file)           => doInspect(file)
           case AddCmd(file, repo, token)  => doAdd(file, repo, token)
+          case BuildCmd(recipe)           => doBuild(recipe)
           case cmd                        => doRemoteCommand(config.socket, cmd)
 
   private def resolveSocket(socket: String): String =
@@ -312,6 +322,110 @@ object Main:
         sys.exit(1)
       case Right(resp) =>
         println(s"Uploaded: $resp")
+
+  private[kit] def doBuild(recipePath: String): Unit =
+    import java.nio.file.{Files, Paths, Path}
+
+    val recipeFile = Paths.get(recipePath)
+    if !Files.exists(recipeFile) then
+      System.err.println(s"Error: recipe not found: $recipePath")
+      sys.exit(1)
+
+    val recipeToml = new String(Files.readAllBytes(recipeFile))
+    RecipeParser.parse(recipeToml) match
+      case Left(err) =>
+        System.err.println(s"Error: $err")
+        sys.exit(1)
+      case Right(recipe) =>
+        println(s"Building ${recipe.name} ${recipe.version} ...")
+
+        // Create build directories
+        val buildDir = Files.createTempDirectory(s"kit-build-${recipe.name}-")
+        val outDir   = buildDir.resolve("out")
+        val srcDir   = buildDir.resolve("src")
+        Files.createDirectories(outDir)
+        Files.createDirectories(srcDir)
+
+        // Download source if URL provided
+        recipe.sourceUrl.foreach { url =>
+          println(s"Downloading $url ...")
+          RepoClient.httpGetBytes(url) match
+            case Left(err) =>
+              System.err.println(s"Error downloading source: $err")
+              sys.exit(1)
+            case Right(bytes) =>
+              val fileName = url.split("/").last
+              Files.write(srcDir.resolve(fileName), bytes)
+              // Extract if it's a tarball (use system tar for source archives)
+              if fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz") ||
+                 fileName.endsWith(".tar.bz2") || fileName.endsWith(".tar.xz") then
+                val pb = new ProcessBuilder("tar", "xf", srcDir.resolve(fileName).toString, "-C", srcDir.toString)
+                pb.inheritIO()
+                val exitCode = pb.start().waitFor()
+                if exitCode != 0 then
+                  System.err.println(s"Error extracting source archive")
+                  sys.exit(1)
+        }
+
+        // Compute prefix for this package
+        val kitPrefix = s"/kit/store/placeholder-${recipe.name}-${recipe.version}"
+
+        // Run build steps
+        val env = Map(
+          "KIT_PREFIX" -> kitPrefix,
+          "KIT_OUT"    -> outDir.toString,
+          "KIT_JOBS"   -> Runtime.getRuntime.availableProcessors().toString,
+          "KIT_NAME"   -> recipe.name,
+          "KIT_VERSION" -> recipe.version,
+        ) ++ recipe.buildEnv
+
+        // Find the actual source directory (often tarball extracts to a subdirectory)
+        val workDir = findSourceDir(srcDir)
+
+        for (step, i) <- recipe.buildSteps.zipWithIndex do
+          println(s"Step ${i + 1}/${recipe.buildSteps.length}: $step")
+          val pb = new ProcessBuilder("sh", "-c", step)
+          pb.directory(workDir.toFile)
+          pb.inheritIO()
+          env.foreach((k, v) => pb.environment().put(k, v))
+          val exitCode = pb.start().waitFor()
+          if exitCode != 0 then
+            System.err.println(s"Build step failed (exit $exitCode): $step")
+            sys.exit(1)
+
+        // Create manifest
+        val manifestToml =
+          s"""name = "${recipe.name}"
+             |version = "${recipe.version}"
+             |target = "${recipe.target}"
+             |content-hash = "sha256-placeholder"
+             |scope = "${if recipe.scope == Scope.System then "system" else "user"}"
+             |""".stripMargin
+        Files.writeString(outDir.resolve("manifest.toml"), manifestToml)
+
+        // Pack the output
+        val kitFile = Paths.get(s"${recipe.name}-${recipe.version}.kit")
+        doPack(outDir.toString, kitFile.toString)
+
+        // Update manifest with real content hash
+        val bytes = Files.readAllBytes(kitFile)
+        val hash = ContentHasher.sha256(bytes)
+        val updatedManifest = manifestToml.replace("sha256-placeholder", hash.toString)
+        Files.writeString(outDir.resolve("manifest.toml"), updatedManifest)
+
+        // Re-pack with correct hash
+        doPack(outDir.toString, kitFile.toString)
+
+        println(s"Built: $kitFile")
+
+  private def findSourceDir(srcDir: java.nio.file.Path): java.nio.file.Path =
+    import java.nio.file.{Files, Path}
+    // If srcDir has exactly one subdirectory and no other files, use it
+    val entries = Files.list(srcDir).iterator()
+    val items = scala.collection.mutable.ArrayBuffer.empty[Path]
+    while entries.hasNext do items += entries.next()
+    if items.length == 1 && Files.isDirectory(items.head) then items.head
+    else srcDir
 
   private def formatSize(bytes: Long): String =
     if bytes < 1024 then s"$bytes B"

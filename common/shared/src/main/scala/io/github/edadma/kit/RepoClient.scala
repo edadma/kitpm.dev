@@ -26,6 +26,9 @@ object RepoClient:
     val bytes = Files.readAllBytes(kitFile)
     httpPost(s"$repoUrl/add", bytes, token)
 
+  /** Download raw bytes from any URL. */
+  def httpGetBytes(url: String): Either[String, Array[Byte]] = httpGet(url)
+
   private def httpGet(url: String): Either[String, Array[Byte]] =
     try
       val conn = URI.create(url).toURL.openConnection().asInstanceOf[HttpURLConnection]
