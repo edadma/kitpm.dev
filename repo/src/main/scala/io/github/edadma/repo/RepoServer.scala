@@ -17,9 +17,9 @@ object RepoServer:
 
   @main
   def run(): Unit =
-    val port    = sys.env.getOrElse("PORT", "3100").toInt
-    val dataDir = sys.env.getOrElse("KIT_REPO_DIR", "./repo-data")
-    val token   = sys.env.getOrElse("KIT_REPO_TOKEN", "")
+    val port    = envOrDefault("PORT", "3100").toInt
+    val dataDir = envOrDefault("KIT_REPO_DIR", "./repo-data")
+    val token   = envOrDefault("KIT_REPO_TOKEN", "")
 
     // Ensure directories exist
     fs.promises.mkdir(s"$dataDir/blobs", MkdirOptions(recursive = true))
@@ -170,6 +170,11 @@ object RepoServer:
         fs.promises.writeFile(s"$dataDir/index.toml", sb.toString).toFuture
       }
     }
+
+  private def envOrDefault(name: String, default: String): String =
+    val v = js.Dynamic.global.process.env.selectDynamic(name)
+    if js.isUndefined(v) || v == null then default
+    else v.asInstanceOf[String]
 
   private def bufferToArray(buf: Buffer): Array[Byte] =
     val arr = new Array[Byte](buf.length)
