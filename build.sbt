@@ -48,7 +48,8 @@ val sharedSettings = Seq(
       "-language:existentials",
       "-language:dynamics",
     ),
-  libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % "test",
+  libraryDependencies += "org.scalatest"  %%% "scalatest" % "3.2.19" % "test",
+  libraryDependencies += "com.github.scopt" %%% "scopt"    % "4.1.0",
   publishMavenStyle      := true,
   Test / publishArtifact := false,
 )
