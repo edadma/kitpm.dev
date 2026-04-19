@@ -175,7 +175,7 @@ object Main:
           case other =>
             println(other)
 
-  private def doPack(directory: String, output: String): Unit =
+  private[kit] def doPack(directory: String, output: String): Unit =
     import java.nio.file.{Files, Paths}
 
     val srcDir = Paths.get(directory)
@@ -209,7 +209,7 @@ object Main:
     println(s"Packed ${files.result().length} files into $output")
     println(s"Content hash: $hash")
 
-  private def doUnpack(kitFile: String, output: String): Unit =
+  private[kit] def doUnpack(kitFile: String, output: String): Unit =
     import java.nio.file.{Files, Paths}
 
     val bytes = Files.readAllBytes(Paths.get(kitFile))
