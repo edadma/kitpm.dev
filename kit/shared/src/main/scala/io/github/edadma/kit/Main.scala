@@ -14,6 +14,7 @@ case class GCCmd(dryRun: Boolean = false)                                       
 case object PingCmd                                                                             extends KitCommand
 case class PackCmd(directory: String = "", output: String = "")                                  extends KitCommand
 case class UnpackCmd(kitFile: String = "", output: String = "")                                  extends KitCommand
+case class InspectCmd(kitFile: String = "")                                                      extends KitCommand
 
 case class KitConfig(
     socket: String = "",
@@ -116,6 +117,14 @@ object Main:
             .required()
             .action((v, c) => c.copy(command = c.command.asInstanceOf[UnpackCmd].copy(output = v))),
         ),
+
+      cmd("inspect")
+        .action((_, c) => c.copy(command = InspectCmd()))
+        .text("show contents of a .kit package")
+        .children(
+          arg[String]("<file>")
+            .action((v, c) => c.copy(command = c.command.asInstanceOf[InspectCmd].copy(kitFile = v))),
+        ),
     )
 
   def main(args: Array[String]): Unit =
@@ -123,9 +132,10 @@ object Main:
       case None => sys.exit(1)
       case Some(config) =>
         config.command match
-          case PackCmd(dir, out)   => doPack(dir, out)
+          case PackCmd(dir, out)    => doPack(dir, out)
           case UnpackCmd(file, out) => doUnpack(file, out)
-          case cmd                 => doRemoteCommand(config.socket, cmd)
+          case InspectCmd(file)     => doInspect(file)
+          case cmd                  => doRemoteCommand(config.socket, cmd)
 
   private def resolveSocket(socket: String): String =
     if socket.nonEmpty then socket
@@ -228,3 +238,39 @@ object Main:
           if (f.mode & 0x49) != 0 then dest.toFile.setExecutable(true)
 
         println(s"Unpacked ${pkg.files.length} files to $output")
+
+  private[kit] def doInspect(kitFile: String): Unit =
+    import java.nio.file.{Files, Paths}
+
+    val bytes = Files.readAllBytes(Paths.get(kitFile))
+    val hash = ContentHasher.sha256(bytes)
+
+    PackageFormat.readBytes(bytes) match
+      case Left(err) =>
+        System.err.println(s"Error: $err")
+        sys.exit(1)
+      case Right(pkg) =>
+        // Parse manifest for display
+        val manifestInfo = ManifestParser.parse(pkg.manifest) match
+          case Right(m) => s"${m.name} ${m.version} (${m.scope}, ${m.target})"
+          case Left(_)  => "(unparseable manifest)"
+
+        println(s"Package: $manifestInfo")
+        println(s"Content hash: $hash")
+        println(s"Files: ${pkg.files.length}")
+        println()
+
+        val totalUncompressed = pkg.files.map(_.data.length.toLong).sum
+        println(s"Total uncompressed: ${formatSize(totalUncompressed)}")
+        println(s"Package file size:  ${formatSize(bytes.length.toLong)}")
+        println()
+
+        for f <- pkg.files.sortBy(_.path) do
+          val mode = if (f.mode & 0x49) != 0 then "x" else " "
+          val size = f.data.length
+          println(f"  $mode ${size}%8d  ${f.path}")
+
+  private def formatSize(bytes: Long): String =
+    if bytes < 1024 then s"$bytes B"
+    else if bytes < 1024 * 1024 then f"${bytes / 1024.0}%.1f KB"
+    else f"${bytes / (1024.0 * 1024.0)}%.1f MB"
