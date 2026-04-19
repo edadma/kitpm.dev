@@ -1,0 +1,30 @@
+#!/bin/sh
+# kit-adapter-userdb-stub
+# Stub adapter for testing. Logs the request and returns success.
+# Used in tier 1 tests where we don't want to touch real system state.
+
+LOG="${KIT_ADAPTER_LOG:-/dev/null}"
+
+read -r INPUT
+echo "$INPUT" >> "$LOG"
+
+# Always return success with fake IDs
+ACTION=$(echo "$INPUT" | sed 's/.*"action":"\([^"]*\)".*/\1/')
+
+case "$ACTION" in
+  create-group)
+    echo '{"ok":true,"message":"stub: group created","gid":1000}'
+    ;;
+  remove-group)
+    echo '{"ok":true,"message":"stub: group removed"}'
+    ;;
+  create-user)
+    echo '{"ok":true,"message":"stub: user created","uid":1000}'
+    ;;
+  remove-user)
+    echo '{"ok":true,"message":"stub: user removed"}'
+    ;;
+  *)
+    echo '{"ok":true,"message":"stub: unknown action"}'
+    ;;
+esac

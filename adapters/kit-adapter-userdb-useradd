@@ -1,0 +1,86 @@
+#!/bin/sh
+# kit-adapter-userdb-useradd
+# User database adapter for Linux using useradd/groupadd/userdel/groupdel.
+# Protocol: reads one JSON line on stdin, writes one JSON line on stdout.
+
+set -e
+
+# Read the request envelope
+read -r INPUT
+
+# Parse envelope fields using basic shell tools
+ACTION=$(echo "$INPUT" | sed 's/.*"action":"\([^"]*\)".*/\1/')
+PAYLOAD=$(echo "$INPUT" | sed 's/.*"payload":"\(.*\)"/\1/' | sed 's/\\"/"/g')
+
+case "$ACTION" in
+  create-group)
+    NAME=$(echo "$PAYLOAD" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+    SYSTEM=$(echo "$PAYLOAD" | sed 's/.*"system":\([a-z]*\).*/\1/')
+
+    ARGS=""
+    if [ "$SYSTEM" = "true" ]; then
+      ARGS="--system"
+    fi
+
+    if getent group "$NAME" >/dev/null 2>&1; then
+      GID=$(getent group "$NAME" | cut -d: -f3)
+      echo "{\"ok\":true,\"message\":\"group already exists\",\"gid\":$GID}"
+    elif groupadd $ARGS "$NAME" 2>/dev/null; then
+      GID=$(getent group "$NAME" | cut -d: -f3)
+      echo "{\"ok\":true,\"message\":\"group created\",\"gid\":$GID}"
+    else
+      echo "{\"ok\":false,\"message\":\"groupadd failed for $NAME\"}"
+    fi
+    ;;
+
+  remove-group)
+    NAME=$(echo "$PAYLOAD" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+
+    if ! getent group "$NAME" >/dev/null 2>&1; then
+      echo "{\"ok\":true,\"message\":\"group does not exist\"}"
+    elif groupdel "$NAME" 2>/dev/null; then
+      echo "{\"ok\":true,\"message\":\"group removed\"}"
+    else
+      echo "{\"ok\":false,\"message\":\"groupdel failed for $NAME\"}"
+    fi
+    ;;
+
+  create-user)
+    NAME=$(echo "$PAYLOAD" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+    GROUP=$(echo "$PAYLOAD" | sed 's/.*"group":"\([^"]*\)".*/\1/')
+    HOME=$(echo "$PAYLOAD" | sed 's/.*"home":"\([^"]*\)".*/\1/')
+    SHELL=$(echo "$PAYLOAD" | sed 's/.*"shell":"\([^"]*\)".*/\1/')
+    SYSTEM=$(echo "$PAYLOAD" | sed 's/.*"system":\([a-z]*\).*/\1/')
+
+    ARGS="-g $GROUP -d $HOME -s $SHELL"
+    if [ "$SYSTEM" = "true" ]; then
+      ARGS="$ARGS --system"
+    fi
+
+    if getent passwd "$NAME" >/dev/null 2>&1; then
+      UID_VAL=$(id -u "$NAME")
+      echo "{\"ok\":true,\"message\":\"user already exists\",\"uid\":$UID_VAL}"
+    elif useradd $ARGS -m "$NAME" 2>/dev/null; then
+      UID_VAL=$(id -u "$NAME")
+      echo "{\"ok\":true,\"message\":\"user created\",\"uid\":$UID_VAL}"
+    else
+      echo "{\"ok\":false,\"message\":\"useradd failed for $NAME\"}"
+    fi
+    ;;
+
+  remove-user)
+    NAME=$(echo "$PAYLOAD" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+
+    if ! getent passwd "$NAME" >/dev/null 2>&1; then
+      echo "{\"ok\":true,\"message\":\"user does not exist\"}"
+    elif userdel -r "$NAME" 2>/dev/null; then
+      echo "{\"ok\":true,\"message\":\"user removed\"}"
+    else
+      echo "{\"ok\":false,\"message\":\"userdel failed for $NAME\"}"
+    fi
+    ;;
+
+  *)
+    echo "{\"ok\":false,\"message\":\"unknown action: $ACTION\"}"
+    ;;
+esac

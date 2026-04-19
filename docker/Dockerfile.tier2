@@ -1,0 +1,24 @@
+FROM ubuntu:24.04
+
+# Install JDK and basic tools
+RUN apt-get update && apt-get install -y \
+    openjdk-21-jdk-headless \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install sbt
+RUN curl -fL "https://github.com/sbt/sbt/releases/download/v1.12.9/sbt-1.12.9.tgz" | tar xz -C /usr/local && \
+    ln -s /usr/local/sbt/bin/sbt /usr/local/bin/sbt
+
+# Copy Kit source
+WORKDIR /kit
+COPY . .
+
+# Pre-fetch dependencies
+RUN sbt "commonJVM/compile" "kitdJVM/compile" "kitJVM/compile"
+
+# Make adapters executable
+RUN chmod +x adapters/*
+
+# Default: run tier 2 tests
+CMD ["sbt", "kitdJVM/testOnly io.github.edadma.kitd.Tier2Tests"]
