@@ -112,17 +112,16 @@ class Daemon(val root: String):
     entry match
       case None => Left(s"package '$name' not found in any repo")
       case Some(pkg) =>
-        // Find which repo has this package
-        val repoUrl = cachedRepos.collectFirst {
+        cachedRepos.collectFirst {
           case (idx, url) if idx.packages.exists(_.contentHash == pkg.contentHash) => url
-        }.getOrElse(return Left("internal error: package found in index but repo URL lost"))
-
-        // Fetch the blob
-        RepoClient.fetchBlob(repoUrl, pkg.contentHash) match
-          case Left(err) => Left(s"failed to fetch ${pkg.name}: $err")
-          case Right(blobPath) =>
-            try installFromFile(blobPath, system)
-            finally Files.deleteIfExists(blobPath)
+        } match
+          case None => Left("internal error: package found in index but repo URL lost")
+          case Some(repoUrl) =>
+            RepoClient.fetchBlob(repoUrl, pkg.contentHash) match
+              case Left(err) => Left(s"failed to fetch ${pkg.name}: $err")
+              case Right(blobPath) =>
+                try installFromFile(blobPath, system)
+                finally Files.deleteIfExists(blobPath)
 
   private def loadCachedIndexes(): Unit =
     val cacheDir = Paths.get(s"$prefix/kit/var/cache")
